@@ -18,6 +18,7 @@ import { Button } from "@/components/atoms/Button";
 import { TextInput } from "@/components/atoms/TextInput";
 import { PlanSteps } from "@/components/molecules/PlanSteps";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
+import { sameWorkout } from "@/shared/workout-identity";
 
 function offset(day: string, days: number) {
   const d = new Date(`${day}T12:00:00Z`);
@@ -342,52 +343,75 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             Higher stages need longer lunch windows. Sunday remains a rest day.
           </p>
           <div className="workout-grid">
-            {preview.workouts.map((workout) => (
-              <article className="surface" key={workout.dayOffset}>
-                <div className="section-heading">
-                  <div>
-                    <span className="eyebrow">
-                      {names[workout.dayOffset]} ·{" "}
-                      {offset(start, workout.dayOffset)}
-                    </span>
-                    <h3>{workout.title}</h3>
+            {preview.workouts.map((original) => {
+              const override = data.overrides.find(
+                (o) =>
+                  o.day === offset(start, original.dayOffset) &&
+                  sameWorkout(o.before, original),
+              );
+              const workout = override?.workout ?? original;
+              const rest = override?.workout === null;
+              return (
+                <article className="surface" key={workout.dayOffset}>
+                  <div className="section-heading">
+                    <div>
+                      <span className="eyebrow">
+                        {names[workout.dayOffset]} ·{" "}
+                        {offset(start, workout.dayOffset)}
+                      </span>
+                      <h3>{rest ? "Rest · no run" : workout.title}</h3>
+                    </div>
+                    <StatusBadge>
+                      ≈
+                      {rest
+                        ? "0.0"
+                        : workoutKm(workout, preview.easyPace).toFixed(1)}{" "}
+                      km
+                    </StatusBadge>
                   </div>
-                  <StatusBadge>
-                    ≈{workoutKm(workout, preview.easyPace).toFixed(1)} km
-                  </StatusBadge>
-                </div>
-                <p className="muted small-text">
-                  Estimated{" "}
-                  {Math.round(
-                    workout.steps.reduce(
-                      (sum, s) => sum + stepSeconds(s, preview.easyPace),
-                      0,
-                    ) / 60,
-                  )}{" "}
-                  min
-                </p>
-                <PlanSteps steps={workout.steps} />
-                <Button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(
-                        garminWorkoutText(workout),
-                      );
-                      setFailed(false);
-                      setMessage("Garmin steps copied.");
-                    } catch {
-                      setFailed(true);
-                      setMessage(
-                        "Clipboard unavailable. The steps are displayed above for manual entry.",
-                      );
-                    }
-                  }}
-                >
-                  Copy Garmin steps
-                </Button>
-              </article>
-            ))}
+                  {override && (
+                    <p className="muted small-text">
+                      Approved daily adjustment. Weekly totals and adherence
+                      retain the original reviewed baseline.
+                    </p>
+                  )}
+                  {!rest && (
+                    <>
+                      <p className="muted small-text">
+                        Estimated{" "}
+                        {Math.round(
+                          workout.steps.reduce(
+                            (sum, s) => sum + stepSeconds(s, preview.easyPace),
+                            0,
+                          ) / 60,
+                        )}{" "}
+                        min
+                      </p>
+                      <PlanSteps steps={workout.steps} />
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              garminWorkoutText(workout),
+                            );
+                            setFailed(false);
+                            setMessage("Garmin steps copied.");
+                          } catch {
+                            setFailed(true);
+                            setMessage(
+                              "Clipboard unavailable. The steps are displayed above for manual entry.",
+                            );
+                          }
+                        }}
+                      >
+                        Copy Garmin steps
+                      </Button>
+                    </>
+                  )}
+                </article>
+              );
+            })}
           </div>
         </>
       )}

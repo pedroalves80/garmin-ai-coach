@@ -5,6 +5,7 @@ import type { DashboardData } from "@/server/dashboard/data";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import { TrainingMetrics } from "@/components/organisms/TrainingMetrics";
 import { TrainingWorkspace } from "@/components/organisms/TrainingWorkspace";
+import { CoachPanel } from "@/components/organisms/CoachPanel";
 
 export function DashboardTemplate({
   data,
@@ -81,14 +82,16 @@ export function DashboardTemplate({
         </div>
       </div>
       <TrainingMetrics data={training} />
+      <CoachPanel />
       <TrainingWorkspace data={training} />
       <p className="attribution muted">
         Data provided by Garmin devices. Values reflect the last successful
-        sync. Volume reviews use app rules; AI coaching is not connected yet.
+        sync. AI reviews explain the data; app rules constrain workout changes.
       </p>
       <nav className="bottom-nav" aria-label="Primary navigation">
         <a href="#overview">Overview</a>
         <a href="#progress">Progress</a>
+        <a href="#coach">Coach</a>
         <a href="#plan">Plan</a>
         <a href="#connection">Garmin</a>
       </nav>

@@ -15,8 +15,9 @@ Implemented:
 - Garmin token exchange, sync status and protected sync route
 - Docker and Docker Compose configuration
 - Training trends, check-ins, planned-versus-recorded distance and progression reviews
+- On-demand AI weekly/daily reviews, cached responses and approved workout reductions
 
-The dashboard reads stored Garmin data and includes a 30-stage running planner with Garmin-ready steps. Future stages are previews; only explicitly saved weeks enter adherence comparisons. AI coaching is the next feature.
+The dashboard reads stored Garmin data and includes a 30-stage running planner with Garmin-ready steps. Future stages are previews; only explicitly saved weeks enter adherence comparisons. The Coach tab explains the training and proposes daily changes for explicit approval.
 
 Garmin sync uses the official [Personal API Swagger](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/) (v1.0.0, checked 2026-10-29):
 
@@ -36,7 +37,7 @@ npm run dev
 
 Open http://localhost:3000.
 
-Set `GARMIN_PERSONAL_API_KEY` in `.env` and restart after changing environment variables. No login, session key or passphrase is required to use this trusted-local app. Leave the OpenAI key blank for this phase; syncing makes no AI calls. Existing `APP_SESSION_SECRET` values are unused and may remain in older `.env` files.
+Set `GARMIN_PERSONAL_API_KEY` and, optionally, `OPENAI_API_KEY` in `.env`, and restart after changing environment variables. No login, session key or passphrase is required to use this trusted-local app. Without an OpenAI key, Garmin syncing and the planner still work. Existing `APP_SESSION_SECRET` values are unused and may remain in older `.env` files.
 
 In the Garmin panel, press **Sync Garmin**. The Garmin key stays on the server. The first sync imports the last 90 days. Later syncs replay from seven days before the last successful checkpoint to capture late uploads and corrections. Use “Recheck the last 90 days” for older edits within that period. Deletions in Garmin are not mirrored yet.
 
@@ -48,7 +49,7 @@ Dashboard weeks start Monday in Europe/Lisbon. Hyrox is identified by its type o
 
 - Four completed weeks plus the current partial week show running distance and time. Week-over-week percentage change compares completed weeks only.
 - Similar-run observations compare the latest 28 days with the preceding 28, using at least three independent matched pairs. Matching requires road running, average HR 135–150 bpm with at most 3 bpm difference, distance within 10%, start locations within 250 m, ascent density within 5 m/km, and temperature within 5°C where available. Missing ascent/location excludes a run. Matching start points does not establish identical routes; wind, effort and stops are not controlled. These are observations, not proof of a lower HR or a standardized fitness test.
-- Log fatigue and muscle soreness on a 1–5 scale and pain on a 0–10 scale. Check-ins upsert by date, are stored only locally, and accept dates within the last 14 days. No scores are filled in automatically.
+- Log fatigue and muscle soreness on a 1–5 scale and pain on a 0–10 scale. Check-ins upsert by date, are stored locally, and accept dates within the last 14 days. Coach requests include recent scores; notes stay local. No scores are filled in automatically.
 - A plan starts on Monday and stores a complete snapshot of its reviewed steps. The first draft defaults to next Monday so it does not add quality work to the already-started week. The 30 stages toward 80 km are milestone ceilings, not automatic calendar advancement. Reviewed volume can be set below a milestone; at least 20 km is supported in this starting template.
 - Save starting stage 1 first. Later approvals move no more than one stage at a time. An increase must satisfy the volume review and cannot exceed its suggested kilometers. Holding/reducing is supported by repeating the stage or using a lower reviewed volume. Saving a plan does not publish anything to Garmin.
 - Weekly distance is calculated from every step, including warm-ups, cool-downs and nested repeats. Distance steps are exact; time-step distances use the midpoint of the target pace range and are explicitly estimated. The editable HR planning pace estimates duration, not the effort target. Tuesday strides and Thursday tempo remain a small, fixed amount of quality while volume builds; cutback weeks replace them with base running.
@@ -62,7 +63,23 @@ The single-session review flag compares the longest planned run with the longest
 
 This is a single-user app with no sign-in. Access control is your network boundary: anyone who can reach the app through an accepted hostname can view its data and use it. A Raspberry Pi alone does not restrict network access; keep the service on your trusted LAN/VPN and do not port-forward it publicly. Host/origin protections do not authenticate users or replace a firewall.
 
-## Raspberry Pi
+## AI coach
+
+Open **Coach** and choose **What should I do today?** or **Review my week**. Opening the dashboard, syncing Garmin, saving check-ins and reading saved reviews make no OpenAI requests. `GET /api/coach` reads local status/history; same-origin `POST /api/coach` generates reviews or approves their proposed workout changes.
+
+The adapter uses the [OpenAI Responses API with structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), server-side validation, a 30-second timeout, low reasoning effort, at most 1,600 output tokens and no automatic retries or model fallback. `OPENAI_MODEL` defaults to the inexpensive [gpt-6-luna](https://developers.openai.com/api/docs/models/gpt-6-luna). Changing it requires a model supporting Responses, structured outputs and low reasoning effort. Actual charges depend on the configured model and OpenAI pricing.
+
+SQLite records request attempts before contacting OpenAI. Limits are six fresh attempts per Lisbon calendar day and 60 per calendar month, shared across browser sessions and app restarts. Failed attempts also count because their billing status can be uncertain. These are request limits, not a dollar budget. Context is bounded to 16 KB and output is capped; unchanged reviews are cached by model, prompt version and training fingerprint. A persistent lease rejects overlapping requests. There is no background AI spending.
+
+Only an explicit allowlist of training/health summaries is sent: five weeks of sport totals, seven days of session summaries, sleep/resting-HR/Body-Battery measurements, check-in scores, the saved plan's stage/volume, today's steps and locally calculated progression/comparison results. Garmin raw JSON, locations, activity names, check-in notes, credentials and personal identifiers are excluded. Dates are included for scheduling. Requests set `store: false`; this does not eliminate OpenAI's default abuse-monitoring retention. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
+
+The model can choose only follow, shorten, replace quality with a recovery run, or rest. All changes are constructed locally: shorten uses 80% of the original estimated distance at HR 125–140 bpm; replacement uses at most the original distance at that HR. The coach cannot raise volume or speed, write arbitrary workouts, bypass progression rules or upload to Garmin. Recent reported pain requires rest advice; high fatigue/soreness permits only reduction or rest. Missing check-ins, stale sync, no saved workout, or an already recorded run limit proposals. These are conservative app rules, not validated medical or injury predictions.
+
+**Approve this workout change** saves a date-specific override only after rechecking the training fingerprint and date. A new sync, changed plan/check-in scores or a recorded activity invalidates an unapproved proposal. Saving a newly reviewed week clears its earlier daily overrides. The planner and approved-review card show the adjusted steps; original weekly totals and distance-adherence comparisons remain the reviewed baseline. Approval is local; copy the steps into Garmin Connect. Reviews and approvals survive restarts.
+
+Provider failures, refusals, incomplete output, schema errors and disallowed actions leave workouts unchanged. The UI shows a retryable error without exposing provider responses or secrets.
+
+## Raspberry Pi deployment
 
 Create `.env` with server-only secrets, then run:
 
@@ -90,7 +107,6 @@ npm run build
 
 1. Scheduled syncing for this trusted-local deployment.
 2. Detailed activity/FIT analysis for HR drift and stronger route comparisons.
-3. Low-cost OpenAI Responses API coach adapter with structured output validation.
-4. Workout FIT export workflow.
+3. Workout FIT export workflow.
 
 The automated tests use an in-memory database and synthetic API responses. They cover pagination, retries, malformed data, token renewal, atomic failure recovery, duplicate prevention, corrections and Lisbon week boundaries. A real Garmin account test requires your own key and is not part of the test suite.

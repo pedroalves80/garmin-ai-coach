@@ -82,6 +82,7 @@ export function trainingDashboardData(now = new Date()) {
     todayCheckIn: checkIns.find((c) => c.day === today) ?? null,
     currentPlan,
     previewPlan,
+    overrides: repository.overrides(),
     plannedKm: currentPlan ? planKm(currentPlan) : null,
     completion: currentPlan
       ? workoutCompletion(currentPlan, activities, today)

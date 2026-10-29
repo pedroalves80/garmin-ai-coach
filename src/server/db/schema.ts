@@ -46,3 +46,24 @@ export const trainingPlans = sqliteTable("training_plans", {
   planJson: text("plan_json").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+export const coachRequests = sqliteTable("coach_requests", {
+  id: text("id").primaryKey(),
+  day: text("day").notNull(),
+  createdAt: text("created_at").notNull(),
+  finished: integer("finished").notNull().default(0),
+});
+export const coachReviews = sqliteTable("coach_reviews", {
+  id: text("id").primaryKey(),
+  cacheKey: text("cache_key").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+  reviewJson: text("review_json").notNull(),
+});
+export const coachOverrides = sqliteTable("coach_overrides", {
+  day: text("day").primaryKey(),
+  reviewId: text("review_id")
+    .notNull()
+    .references(() => coachReviews.id),
+  workoutJson: text("workout_json").notNull(),
+  createdAt: text("created_at").notNull(),
+});

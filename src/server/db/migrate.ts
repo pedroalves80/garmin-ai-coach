@@ -51,6 +51,25 @@ export function migrateDatabase(sqlite: Database.Database) {
     plan_json TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS coach_requests (
+    id TEXT PRIMARY KEY,
+    day TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    finished INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS coach_requests_day_idx ON coach_requests(day);
+  CREATE TABLE IF NOT EXISTS coach_reviews (
+    id TEXT PRIMARY KEY,
+    cache_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    review_json TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS coach_overrides (
+    day TEXT PRIMARY KEY,
+    review_id TEXT NOT NULL REFERENCES coach_reviews(id),
+    workout_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `),
   )();
 }

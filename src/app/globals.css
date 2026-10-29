@@ -413,7 +413,7 @@ h2 {
   border-radius: 16px;
   bottom: 16px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   left: 50%;
   max-width: 520px;
   padding: 6px;
@@ -432,6 +432,31 @@ h2 {
 .bottom-nav a.active {
   background: var(--surface-2);
   color: var(--foreground);
+}
+.coach-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.coach-history {
+  display: grid;
+  gap: 8px;
+}
+.coach-history select {
+  width: 100%;
+  min-width: 0;
+}
+.coach-review {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.coach-review li {
+  margin-bottom: 10px;
+}
+.coach-proposal {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 4px;
 }
 @media (max-width: 720px) {
   .app-shell {
