@@ -20,6 +20,18 @@ Implemented:
 
 The dashboard reads stored Garmin data and includes a 30-stage running planner with Garmin-ready steps. Future stages are previews; only explicitly saved weeks enter adherence comparisons. The Coach tab explains the training and proposes daily changes for explicit approval.
 
+## Screens and navigation
+
+The light interface uses dark text and green accents. Desktop navigation is a sidebar; phones use a persistent bottom bar with the current screen highlighted.
+
+- **Today** (`/`): today's recorded/scheduled running, weekly totals, a recovery snapshot and an expandable check-in form.
+- **Plan** (`/plan`): a seven-day selector and one workout's Garmin-ready steps at a time. Week, volume and pace controls are under **Adjust week & pace settings**. Saving still requires explicit review and the existing progression checks.
+- **Coach** (`/coach`): on-demand daily/weekly reviews and reviewed changes. Privacy, usage limits and review metadata are available through expandable details.
+- **Progress** (`/progress`): switch between training trends and recent activities. Comparison methods and saved-versus-recorded details expand on request.
+- **Settings** (`/settings`): Garmin connection, automatic sync status and data/privacy information.
+
+Old section bookmarks such as `/#connection` redirect to the corresponding screen. A shared status observer refreshes the visible screen when Garmin imports change, without making AI requests. Workout targets, copy actions, check-in saves and approval rules remain available across the new screens.
+
 Garmin sync uses the official [Personal API Swagger](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/) (v1.0.0, checked 2026-10-29):
 
 - `GET /activitylist-service/activities/search/activities` with `start`, `limit`, `startDate`, `endDate`; distances are meters and durations are seconds.
@@ -52,7 +64,7 @@ The worker attempts a sync on startup, then three hours after each successful sc
 
 Schedules and retry counts live in SQLite. A 90-second leadership lease, renewed every 20 seconds, selects one worker across processes; the existing Garmin sync lease also prevents overlap with manual sync. Work is checked every 30 seconds, so scheduled times can vary by that amount while the worker is healthy. A successful manual sync cancels outstanding scheduled retries and starts a fresh three-hour interval. Missed intervals are not replayed individually after downtime.
 
-Sync jobs have a five-minute deadline, including token exchange and pagination. Shutdown cancels in-flight HTTP calls and preserves the last successful checkpoint. The Garmin panel polls local sync status every 30 seconds while visible, refreshes imported data when the successful-sync timestamp changes, and shows worker availability, retry errors and the next attempt in Lisbon time. The status endpoint reports worker health separately from Garmin connectivity; a healthy worker can be waiting for credentials or a network retry.
+Sync jobs have a five-minute deadline, including token exchange and pagination. Shutdown cancels in-flight HTTP calls and preserves the last successful checkpoint. The app polls local sync status every 30 seconds while visible and refreshes imported data when the successful-sync timestamp changes. Settings shows worker availability, retry errors and the next attempt in Lisbon time. The status endpoint reports worker health separately from Garmin connectivity; a healthy worker can be waiting for credentials or a network retry.
 
 Docker Compose runs the web app and `garmin-worker` as separate services using the same image and persistent SQLite volume. The worker has no published port; its healthcheck reads the stored leadership lease, and `restart: unless-stopped` restarts an exited process. Docker marks a failed healthcheck unhealthy; health status alone does not restart a process. Use `docker compose logs -f garmin-worker` and `docker compose ps` to inspect it. No new passphrase or scheduler API key is needed.
 

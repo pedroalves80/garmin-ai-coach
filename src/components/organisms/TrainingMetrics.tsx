@@ -40,14 +40,14 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
           }
           detail={
             data.plannedKm === null
-              ? "Review and save a week below"
+              ? "Review a week in Plan"
               : "Sum of all workout steps"
           }
         />
       </div>
       <div className="dashboard-grid">
         <section className="surface" aria-labelledby="volume-heading">
-          <h3 id="volume-heading">Running · last 4 weeks + current</h3>
+          <h3 id="volume-heading">Your weekly running</h3>
           {data.weeks.map((week) => (
             <div className="trend-row" key={week.start}>
               <div className="step-top">
@@ -100,11 +100,14 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
               <dd>{Math.round(current.wellnessMinutes)} min</dd>
             </div>
           </dl>
-          <p className="muted small-text">
-            Hyrox uses the activity type or a HYROX label. Meditation, breathing
-            and yoga are kept out of training-time totals. Minutes describe
-            volume, not intensity or a physiological load score.
-          </p>
+          <details className="supporting-details">
+            <summary>How training time is grouped</summary>
+            <p className="muted small-text">
+              Hyrox uses the activity type or a HYROX label. Meditation,
+              breathing and yoga are kept out of training-time totals. Minutes
+              describe volume, not intensity or a physiological load score.
+            </p>
+          </details>
         </section>
       </div>
       <section className="surface comparison-panel">
@@ -128,17 +131,21 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
             </p>
           </>
         )}
-        <p className="muted small-text">
-          Last 28 days versus the preceding 28. Outdoor road runs only, average
-          HR 135–150 bpm and within 3 bpm between runs, distance within 10%,
-          starting area within 250 m and ascent per km within 5 m. Temperature
-          difference is limited to 5°C where present. Starting area is not proof
-          of the same route; wind, effort and stops are not controlled.{" "}
-          {comparison.weatherMissing
-            ? "Some temperature data is missing. "
-            : ""}
-          This is an observation, not a fixed-HR fitness test.
-        </p>
+        <details className="supporting-details">
+          <summary>How similar runs are compared</summary>
+          <p className="muted small-text">
+            Last 28 days versus the preceding 28. Outdoor road runs only,
+            average HR 135–150 bpm and within 3 bpm between runs, distance
+            within 10%, starting area within 250 m and ascent per km within 5 m.
+            Temperature difference is limited to 5°C where present. Starting
+            area is not proof of the same route; wind, effort and stops are not
+            controlled.{" "}
+            {comparison.weatherMissing
+              ? "Some temperature data is missing. "
+              : ""}
+            This is an observation, not a fixed-HR fitness test.
+          </p>
+        </details>
       </section>
       <section
         className="surface comparison-panel"
@@ -173,8 +180,8 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
         </p>
       </section>
       {!!data.completion.length && (
-        <section className="surface comparison-panel">
-          <h3>Saved plan versus recorded running</h3>
+        <details className="surface comparison-panel supporting-details">
+          <summary>Saved plan versus recorded running</summary>
           <ul className="activity-list">
             {data.completion.map((item) => (
               <li key={item.day}>
@@ -195,7 +202,7 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
             estimated distance, not confirmation that pace or HR targets were
             followed.
           </p>
-        </section>
+        </details>
       )}
     </section>
   );

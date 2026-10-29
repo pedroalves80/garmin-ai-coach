@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button";
 import { CoachReviewCard } from "@/components/molecules/CoachReviewCard";
 import type { CoachKind, CoachReview, CoachStatus } from "@/shared/types/coach";
+import { Icon } from "@/components/atoms/Icon";
 
 export function CoachPanel() {
   const router = useRouter();
@@ -78,19 +79,14 @@ export function CoachPanel() {
       aria-labelledby="coach-heading"
       aria-busy={pending}
     >
-      <div className="section-heading">
-        <h2 id="coach-heading">Your AI coach</h2>
-        <span className="muted small-text">On demand</span>
-      </div>
-      <div className="surface">
-        <p>
+      <div className="surface coach-intro">
+        <span className="workout-symbol">
+          <Icon name="coach" />
+        </span>
+        <h2 id="coach-heading">What would help today?</h2>
+        <p className="muted">
           Review your week or decide today’s run using your saved plan, Garmin
           training and recovery check-ins.
-        </p>
-        <p className="muted small-text">
-          Requests send compact training and health summaries to OpenAI. GPS,
-          activity names, check-in notes and keys stay on this server. Opening
-          this page makes no AI request.
         </p>
         <div className="action-row coach-actions">
           <Button
@@ -107,14 +103,22 @@ export function CoachPanel() {
             Review my week
           </Button>
         </div>
-        {status && (
+        <details className="supporting-details coach-privacy">
+          <summary>Privacy & request limits</summary>
           <p className="muted small-text">
-            {status.dailyUsed}/{status.dailyLimit} requests today ·{" "}
-            {status.monthlyUsed}/{status.monthlyLimit} this month ·{" "}
-            {status.model}. Unchanged reviews use the cache. Limits reset in
-            Europe/Lisbon.
+            Only compact training and health summaries go to OpenAI. GPS,
+            activity names and check-in notes stay local. Reviews run when you
+            ask.
           </p>
-        )}
+          {status && (
+            <p className="muted small-text">
+              {status.dailyUsed}/{status.dailyLimit} requests today ·{" "}
+              {status.monthlyUsed}/{status.monthlyLimit} this month ·{" "}
+              {status.model}. Unchanged reviews use the cache. Limits reset in
+              Europe/Lisbon.
+            </p>
+          )}
+        </details>
         {status && !status.configured && (
           <p className="muted">
             Set OPENAI_API_KEY in the server’s .env and restart to enable

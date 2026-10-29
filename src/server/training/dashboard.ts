@@ -66,8 +66,28 @@ export function trainingDashboardData(now = new Date()) {
   const recent = completed.at(-1)!,
     prior = completed.at(-2)!;
   const lastSync = garmin.status()?.lastCompletedAt ?? null;
+  const todayRuns = activities.filter(
+    (a) =>
+      sportGroup(a) === "running" &&
+      calendarDate(new Date(a.startedAt)) === today,
+  );
+  const overrides = repository.overrides();
+  const scheduled =
+    currentPlan?.workouts.find(
+      (w) => shiftDay(currentPlan.start, w.dayOffset) === today,
+    ) ?? null;
+  const todayOverride = overrides.find((o) => o.day === today);
   return {
     today,
+    todayRunning: {
+      runs: todayRuns.length,
+      km: todayRuns.reduce((sum, a) => sum + (a.distanceMeters ?? 0) / 1000, 0),
+      minutes: todayRuns.reduce(
+        (sum, a) => sum + (a.durationSeconds ?? 0) / 60,
+        0,
+      ),
+    },
+    todayWorkout: todayOverride ? todayOverride.workout : scheduled,
     monday,
     weeks,
     averageKm: average,
@@ -82,7 +102,7 @@ export function trainingDashboardData(now = new Date()) {
     todayCheckIn: checkIns.find((c) => c.day === today) ?? null,
     currentPlan,
     previewPlan,
-    overrides: repository.overrides(),
+    overrides,
     plannedKm: currentPlan ? planKm(currentPlan) : null,
     completion: currentPlan
       ? workoutCompletion(currentPlan, activities, today)

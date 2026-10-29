@@ -90,14 +90,17 @@ export function CoachReviewCard({
           {copyMessage && <p role="status">{copyMessage}</p>}
         </div>
       )}
-      <p className="muted small-text">
-        {review.model} · {review.usage.inputTokens.toLocaleString()} input /{" "}
-        {review.usage.outputTokens.toLocaleString()} output tokens ·{" "}
-        {new Date(review.createdAt).toLocaleString("en-GB", {
-          timeZone: "Europe/Lisbon",
-        })}{" "}
-        Lisbon
-      </p>
+      <details className="supporting-details review-details">
+        <summary>Review details</summary>
+        <p className="muted small-text">
+          {review.model} · {review.usage.inputTokens.toLocaleString()} input /{" "}
+          {review.usage.outputTokens.toLocaleString()} output tokens ·{" "}
+          {new Date(review.createdAt).toLocaleString("en-GB", {
+            timeZone: "Europe/Lisbon",
+          })}{" "}
+          Lisbon
+        </p>
+      </details>
     </article>
   );
 }

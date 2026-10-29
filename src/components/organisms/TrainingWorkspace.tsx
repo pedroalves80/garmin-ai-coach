@@ -8,17 +8,17 @@ import {
   defaultEasyPace,
   defaultTempoPace,
   formatPace,
-  garminWorkoutText,
   planKm,
   stepSeconds,
   volumeMilestones,
   workoutKm,
 } from "@/shared/training-plan";
+import { sameWorkout } from "@/shared/workout-identity";
 import { Button } from "@/components/atoms/Button";
-import { TextInput } from "@/components/atoms/TextInput";
 import { PlanSteps } from "@/components/molecules/PlanSteps";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
-import { sameWorkout } from "@/shared/workout-identity";
+import { Icon } from "@/components/atoms/Icon";
+import { CopyWorkoutButton } from "@/components/molecules/CopyWorkoutButton";
 
 function offset(day: string, days: number) {
   const d = new Date(`${day}T12:00:00Z`);
@@ -29,6 +29,15 @@ function parsePace(value: string) {
   if (!/^\d{1,2}:[0-5]\d$/.test(value)) return NaN;
   const [m, s] = value.split(":").map(Number);
   return m * 60 + s;
+}
+function settingsKey(
+  start: string,
+  week: number,
+  km: number,
+  easy: number,
+  tempo: number,
+) {
+  return [start, week, km, easy, tempo].join("|");
 }
 const names = [
   "Monday",
@@ -41,378 +50,377 @@ const names = [
 ];
 
 export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
-  const router = useRouter();
-  const [week, setWeek] = useState(data.previewPlan?.weekNumber ?? 1);
-  const [start, setStart] = useState(
-    data.previewPlan?.start ?? offset(data.monday, 7),
-  );
-  const [targetKm, setTargetKm] = useState(
-    String(data.previewPlan?.targetKm ?? 25),
-  );
+  const router = useRouter(),
+    initial = data.previewPlan;
+  const [week, setWeek] = useState(initial?.weekNumber ?? 1),
+    [start, setStart] = useState(initial?.start ?? offset(data.monday, 7)),
+    [targetKm, setTargetKm] = useState(String(initial?.targetKm ?? 25));
   const [easy, setEasy] = useState(
-    formatPace(data.previewPlan?.easyPace ?? defaultEasyPace),
+      formatPace(initial?.easyPace ?? defaultEasyPace),
+    ),
+    [tempo, setTempo] = useState(
+      formatPace(initial?.tempoPace ?? defaultTempoPace),
+    );
+  const todayOffset = Math.round(
+    (Date.parse(`${data.today}T12:00:00Z`) -
+      Date.parse(`${initial?.start ?? offset(data.monday, 7)}T12:00:00Z`)) /
+      86400000,
   );
-  const [tempo, setTempo] = useState(
-    formatPace(data.previewPlan?.tempoPace ?? defaultTempoPace),
+  const [selectedDay, setSelectedDay] = useState(
+    todayOffset >= 0 && todayOffset <= 6 ? todayOffset : 0,
   );
-  const [day, setDay] = useState(data.today);
-  const [fatigue, setFatigue] = useState(
-    String(data.todayCheckIn?.fatigue ?? ""),
+  const [pending, setPending] = useState(false),
+    [message, setMessage] = useState(""),
+    [failed, setFailed] = useState(false);
+  const [savedKey, setSavedKey] = useState(
+    initial
+      ? settingsKey(
+          initial.start,
+          initial.weekNumber,
+          initial.targetKm,
+          initial.easyPace,
+          initial.tempoPace,
+        )
+      : null,
   );
-  const [soreness, setSoreness] = useState(
-    String(data.todayCheckIn?.soreness ?? ""),
-  );
-  const [pain, setPain] = useState(String(data.todayCheckIn?.pain ?? ""));
-  const [notes, setNotes] = useState(data.todayCheckIn?.notes ?? "");
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState("");
-  const [failed, setFailed] = useState(false);
   let preview = null;
   try {
-    const ep = parsePace(easy),
-      tp = parsePace(tempo);
-    if (Number.isFinite(ep) && Number.isFinite(tp))
-      preview = createTrainingPlan(week, start, ep, tp, Number(targetKm));
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
+      !Number.isFinite(Date.parse(`${start}T12:00:00Z`))
+    )
+      throw new Error("Choose a date");
+    preview = createTrainingPlan(
+      week,
+      start,
+      parsePace(easy),
+      parsePace(tempo),
+      Number(targetKm),
+    );
   } catch {
-    /* Validation is shown next to the controls. */
+    /* Shown next to settings. */
   }
-
-  async function save(path: string, body: unknown) {
-    setPending(true);
-    setFailed(false);
-    setMessage("");
-    try {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-coach-request": "local",
-        },
-        body: JSON.stringify(body),
-      });
-      const result = await response.json();
-      if (!response.ok)
-        throw new Error(result.error ?? "Could not save. Retry.");
-      setMessage("Saved.");
-      router.refresh();
-    } catch (error) {
-      setFailed(true);
-      setMessage(error instanceof Error ? error.message : "Could not save.");
-    } finally {
-      setPending(false);
-    }
-  }
+  const original = preview?.workouts.find((w) => w.dayOffset === selectedDay);
+  const override = original
+    ? data.overrides.find(
+        (o) =>
+          o.day === offset(start, selectedDay) &&
+          sameWorkout(o.before, original),
+      )
+    : undefined;
+  const workout = override ? override.workout : original;
+  const saved =
+    preview &&
+    savedKey ===
+      settingsKey(
+        start,
+        week,
+        preview.targetKm,
+        preview.easyPace,
+        preview.tempoPace,
+      );
 
   return (
-    <section
-      className="training-section"
-      id="plan"
-      aria-labelledby="plan-heading"
-    >
-      <div className="section-heading">
-        <h2 id="plan-heading">Plan & recovery check-in</h2>
-        <StatusBadge>Manual review</StatusBadge>
-      </div>
-      {message && (
-        <div className="workspace-status">
-          <p
-            role={failed ? "alert" : "status"}
-            aria-live="polite"
-            className={failed ? "error-text" : "muted"}
-          >
-            {message}
-          </p>
-        </div>
-      )}
-      <div className="dashboard-grid">
-        <form
-          className="surface training-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save("/api/training/check-in", {
-              day,
-              fatigue: Number(fatigue),
-              soreness: Number(soreness),
-              pain: Number(pain),
-              notes,
-            });
-          }}
-        >
-          <h3>How do you feel?</h3>
-          <label htmlFor="check-day">Date</label>
-          <TextInput
-            id="check-day"
-            type="date"
-            required
-            min={offset(data.today, -14)}
-            max={data.today}
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-          />
-          <label htmlFor="fatigue">Fatigue · 1 fresh → 5 exhausted</label>
-          <select
-            id="fatigue"
-            required
-            value={fatigue}
-            onChange={(e) => setFatigue(e.target.value)}
-          >
-            <option value="">Choose a score</option>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="soreness">Muscle soreness · 1 none → 5 severe</label>
-          <select
-            id="soreness"
-            required
-            value={soreness}
-            onChange={(e) => setSoreness(e.target.value)}
-          >
-            <option value="">Choose a score</option>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="pain">Pain · 0 none → 10 severe</label>
-          <select
-            id="pain"
-            required
-            value={pain}
-            onChange={(e) => setPain(e.target.value)}
-          >
-            <option value="">Choose a score</option>
-            {Array.from({ length: 11 }, (_, n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="check-notes">Notes · optional</label>
-          <textarea
-            id="check-notes"
-            maxLength={300}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Legs, sleep, or anything affecting training"
-          />
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save check-in"}
-          </Button>
-          <p className="muted small-text">
-            {
-              data.checkIns.filter(
-                (c) => c.day >= offset(data.today, -6) && c.day <= data.today,
-              ).length
-            }{" "}
-            check-ins in the last 7 days. A saved check-in can be updated for
-            the same date.
-          </p>
-        </form>
-        <form
-          className="surface training-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (preview)
-              void save("/api/training/plan", {
+    <section className="screen-stack" aria-label="Weekly running planner">
+      <form
+        className="surface plan-summary"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!preview) return;
+          setPending(true);
+          setMessage("");
+          setFailed(false);
+          try {
+            const response = await fetch("/api/training/plan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-coach-request": "local",
+              },
+              body: JSON.stringify({
                 weekNumber: week,
                 start,
                 easyPace: preview.easyPace,
                 tempoPace: preview.tempoPace,
                 targetKm: preview.targetKm,
-              });
-          }}
-        >
-          <h3>30-week milestone preview</h3>
-          <p className="muted">
-            Future milestones remain drafts. Progression depends on completed
-            training and recovery, so 80 km has no guaranteed completion date.
-          </p>
-          <label htmlFor="milestone">Preview stage</label>
-          <select
-            id="milestone"
-            value={week}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              setWeek(n);
-              setTargetKm(String(volumeMilestones[n - 1]));
-              setStart(
-                offset(
-                  data.previewPlan?.start ?? offset(data.monday, 7),
-                  (n - (data.previewPlan?.weekNumber ?? 1)) * 7,
-                ),
-              );
-            }}
-          >
-            {volumeMilestones.map((km, i) => (
-              <option key={i} value={i + 1}>
-                Stage {i + 1} · ≈{km} km{i % 4 === 3 ? " · cutback" : ""}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="reviewed-volume">Reviewed running volume · km</label>
-          <TextInput
-            id="reviewed-volume"
-            type="number"
-            required
-            min={20}
-            max={volumeMilestones[week - 1]}
-            step="0.1"
-            value={targetKm}
-            onChange={(e) => setTargetKm(e.target.value)}
-          />
-          <p className="muted small-text">
-            Choose a value up to this milestone, using the volume review above.
-            An increase requires a completed baseline and recovery check-ins.
-            The first draft starts next Monday to avoid adding another quality
-            run to this week.
-          </p>
-          <label htmlFor="plan-start">Week starting · Monday</label>
-          <TextInput
-            id="plan-start"
-            type="date"
-            required
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            min={data.monday}
-            max={offset(data.monday, 210)}
-          />
-          <label htmlFor="easy-estimate">
-            Planning pace for HR steps · min:sec/km
-          </label>
-          <TextInput
-            id="easy-estimate"
-            inputMode="text"
-            value={easy}
-            onChange={(e) => setEasy(e.target.value)}
-            required
-            pattern="[0-9]{1,2}:[0-5][0-9]"
-          />
-          <label htmlFor="tempo-pace">Tempo working pace · min:sec/km</label>
-          <TextInput
-            id="tempo-pace"
-            value={tempo}
-            onChange={(e) => setTempo(e.target.value)}
-            required
-            pattern="[0-9]{1,2}:[0-5][0-9]"
-          />
-          <p className="muted small-text">
-            The planning pace estimates duration for HR steps; it does not
-            become a pace prescription. Tempo pace is a working setting to
-            review against completed runs.
-          </p>
-          {!preview && (
-            <p role="alert" className="error-text">
-              Use an HR planning pace of 4:00–10:00/km, tempo pace of
-              3:00–7:00/km, and volume from 20 km up to the selected milestone.
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok)
+              throw new Error(result.error ?? "Could not save this week.");
+            setSavedKey(
+              settingsKey(
+                start,
+                week,
+                preview.targetKm,
+                preview.easyPace,
+                preview.tempoPace,
+              ),
+            );
+            setMessage("Reviewed week saved.");
+            router.refresh();
+          } catch (error) {
+            setFailed(true);
+            setMessage(
+              error instanceof Error
+                ? error.message
+                : "Could not save this week.",
+            );
+          } finally {
+            setPending(false);
+          }
+        }}
+      >
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">
+              STAGE {week} OF {volumeMilestones.length}
+              {preview?.cutback ? " · CUTBACK" : ""}
+            </span>
+            <h2>
+              Week of{" "}
+              {/^\d{4}-\d{2}-\d{2}$/.test(start)
+                ? new Date(`${start}T12:00:00Z`).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "long",
+                    timeZone: "UTC",
+                  })
+                : "—"}
+            </h2>
+          </div>
+          <StatusBadge tone={saved ? "success" : "info"}>
+            {saved ? "Reviewed week" : "Draft preview"}
+          </StatusBadge>
+        </div>
+        <div className="plan-totals">
+          <strong>
+            {preview ? `≈${planKm(preview).toFixed(1)}` : "—"}
+            <span>km planned</span>
+          </strong>
+          <strong>
+            {preview?.workouts.length ?? "—"}
+            <span>running days</span>
+          </strong>
+          <span className="muted small-text">
+            {preview?.cutback
+              ? "Cutback week · room to recover"
+              : "Build gradually. Review before progressing."}
+          </span>
+        </div>
+        <details className="plan-settings">
+          <summary>Adjust week & pace settings</summary>
+          <div className="training-form editor-fields">
+            <label htmlFor="milestone">
+              Milestone stage
+              <select
+                id="milestone"
+                value={week}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setWeek(n);
+                  setTargetKm(String(volumeMilestones[n - 1]));
+                  setStart(
+                    offset(
+                      initial?.start ?? offset(data.monday, 7),
+                      (n - (initial?.weekNumber ?? 1)) * 7,
+                    ),
+                  );
+                  setSelectedDay(0);
+                }}
+              >
+                {volumeMilestones.map((km, i) => (
+                  <option key={i} value={i + 1}>
+                    Stage {i + 1} · ≈{km} km{i % 4 === 3 ? " · cutback" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label htmlFor="reviewed-volume">
+              Reviewed running volume · km
+              <input
+                id="reviewed-volume"
+                type="number"
+                required
+                min={20}
+                max={volumeMilestones[week - 1]}
+                step="0.1"
+                value={targetKm}
+                onChange={(e) => setTargetKm(e.target.value)}
+              />
+            </label>
+            <label htmlFor="plan-start">
+              Week starting · Monday
+              <input
+                id="plan-start"
+                type="date"
+                required
+                min={data.monday}
+                max={offset(data.monday, 210)}
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </label>
+            <label htmlFor="easy-estimate">
+              Planning pace for HR steps
+              <input
+                id="easy-estimate"
+                value={easy}
+                required
+                pattern="[0-9]{1,2}:[0-5][0-9]"
+                onChange={(e) => setEasy(e.target.value)}
+              />
+            </label>
+            <label htmlFor="tempo-pace">
+              Tempo working pace · min:sec/km
+              <input
+                id="tempo-pace"
+                value={tempo}
+                required
+                pattern="[0-9]{1,2}:[0-5][0-9]"
+                onChange={(e) => setTempo(e.target.value)}
+              />
+            </label>
+            <p className="muted small-text editor-note">
+              The planning pace estimates HR-step duration. An increase needs a
+              completed baseline and recovery check-ins; milestones stay drafts
+              until reviewed.
             </p>
-          )}
-          {preview && (
-            <p>
-              <strong>
-                ≈{planKm(preview).toFixed(1)} km · {preview.workouts.length}{" "}
-                runs
-              </strong>
-              <br />
-              <span className="muted small-text">
-                Calculated from every warm-up, run, repeat, recovery and
-                cool-down below. Time-based distances are estimates using the
-                midpoint of their pace range.
-              </span>
-            </p>
-          )}
-          <Button type="submit" disabled={pending || !preview}>
+          </div>
+        </details>
+        {!preview && (
+          <p role="alert" className="error-text">
+            Check the settings: planning pace 4:00–10:00/km, tempo 3:00–7:00/km,
+            and volume from 20 km up to the selected milestone.
+          </p>
+        )}
+        <div className="plan-save-row">
+          <p className="muted small-text">
+            Distances include every step. Time-based distances are estimates.
+          </p>
+          <Button disabled={pending || !preview} type="submit">
             {pending ? "Saving…" : "Save reviewed week"}
           </Button>
-        </form>
-      </div>
+        </div>
+      </form>
+      {message && (
+        <p
+          role={failed ? "alert" : "status"}
+          className={`inline-notice ${failed ? "error-text" : "success-text"}`}
+        >
+          {message}
+        </p>
+      )}
       {preview && (
         <>
-          <p className="muted schedule-note">
-            Monday and Wednesday Hyrox; Tuesday and Thursday Zwift; Saturday
-            cycling.{" "}
-            {preview.workouts.length >= 5
-              ? "Wednesday now includes a short run; allow separate sessions and recovery. "
-              : ""}
-            {preview.workouts.length >= 6
-              ? "Friday is a running day: drop Friday Hyrox and review the long Saturday ride. "
-              : "Friday running is off by default. "}
-            Higher stages need longer lunch windows. Sunday remains a rest day.
-          </p>
-          <div className="workout-grid">
-            {preview.workouts.map((original) => {
-              const override = data.overrides.find(
-                (o) =>
-                  o.day === offset(start, original.dayOffset) &&
-                  sameWorkout(o.before, original),
-              );
-              const workout = override?.workout ?? original;
-              const rest = override?.workout === null;
+          <div
+            className="week-strip"
+            role="group"
+            aria-label="Choose a workout day"
+          >
+            {names.map((name, i) => {
+              const run = preview.workouts.find((w) => w.dayOffset === i),
+                edit = data.overrides.find(
+                  (o) =>
+                    o.day === offset(start, i) &&
+                    run &&
+                    sameWorkout(o.before, run),
+                ),
+                effective = edit ? edit.workout : run;
               return (
-                <article className="surface" key={workout.dayOffset}>
-                  <div className="section-heading">
-                    <div>
-                      <span className="eyebrow">
-                        {names[workout.dayOffset]} ·{" "}
-                        {offset(start, workout.dayOffset)}
-                      </span>
-                      <h3>{rest ? "Rest · no run" : workout.title}</h3>
-                    </div>
-                    <StatusBadge>
-                      ≈
-                      {rest
-                        ? "0.0"
-                        : workoutKm(workout, preview.easyPace).toFixed(1)}{" "}
-                      km
-                    </StatusBadge>
-                  </div>
-                  {override && (
-                    <p className="muted small-text">
-                      Approved daily adjustment. Weekly totals and adherence
-                      retain the original reviewed baseline.
-                    </p>
-                  )}
-                  {!rest && (
-                    <>
-                      <p className="muted small-text">
-                        Estimated{" "}
-                        {Math.round(
-                          workout.steps.reduce(
-                            (sum, s) => sum + stepSeconds(s, preview.easyPace),
-                            0,
-                          ) / 60,
-                        )}{" "}
-                        min
-                      </p>
-                      <PlanSteps steps={workout.steps} />
-                      <Button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(
-                              garminWorkoutText(workout),
-                            );
-                            setFailed(false);
-                            setMessage("Garmin steps copied.");
-                          } catch {
-                            setFailed(true);
-                            setMessage(
-                              "Clipboard unavailable. The steps are displayed above for manual entry.",
-                            );
-                          }
-                        }}
-                      >
-                        Copy Garmin steps
-                      </Button>
-                    </>
-                  )}
-                </article>
+                <button
+                  type="button"
+                  key={name}
+                  aria-label={`${name}${effective ? ` · ${effective.title}` : " · no run"}`}
+                  aria-pressed={selectedDay === i}
+                  onClick={() => setSelectedDay(i)}
+                >
+                  <span>{name.slice(0, 3)}</span>
+                  <strong>
+                    {new Date(`${offset(start, i)}T12:00:00Z`).getUTCDate()}
+                  </strong>
+                  <small>
+                    {effective
+                      ? `${workoutKm(effective, preview.easyPace).toFixed(1)}k`
+                      : "Off"}
+                  </small>
+                  <span className={`day-dot ${effective ? "has-run" : ""}`} />
+                </button>
               );
             })}
           </div>
+          <article
+            className="surface selected-workout"
+            aria-labelledby="selected-workout-heading"
+          >
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">
+                  {names[selectedDay]} · {offset(start, selectedDay)}
+                </span>
+                <h2 id="selected-workout-heading">
+                  {workout ? workout.title : "No run scheduled"}
+                </h2>
+              </div>
+              <span className="workout-symbol">
+                <Icon name={workout ? "plan" : "heart"} />
+              </span>
+            </div>
+            {override && (
+              <p className="inline-notice small-text">
+                Approved daily adjustment. Weekly totals retain the reviewed
+                baseline.
+              </p>
+            )}
+            {workout ? (
+              <>
+                <div className="workout-meta">
+                  <span>
+                    ≈{workoutKm(workout, preview.easyPace).toFixed(1)} km
+                  </span>
+                  <span>
+                    ≈
+                    {Math.round(
+                      workout.steps.reduce(
+                        (sum, s) => sum + stepSeconds(s, preview.easyPace),
+                        0,
+                      ) / 60,
+                    )}{" "}
+                    min
+                  </span>
+                  <span>Garmin-ready steps</span>
+                </div>
+                <PlanSteps steps={workout.steps} />
+                <CopyWorkoutButton workout={workout} />
+              </>
+            ) : (
+              <p className="muted rest-message">
+                {override
+                  ? "Rest from running today. This change has been approved."
+                  : selectedDay === 6
+                    ? "A day to recover. Your next running week starts on Monday."
+                    : "Follow your other scheduled training and leave room for recovery."}
+              </p>
+            )}
+          </article>
+          <details className="surface supporting-details">
+            <summary>How this week fits your other training</summary>
+            <p className="muted">
+              Monday and Wednesday Hyrox; Tuesday and Thursday Zwift; Saturday
+              cycling.{" "}
+              {preview.workouts.length >= 5
+                ? "Wednesday includes a short run; separate the sessions and allow recovery. "
+                : ""}
+              {preview.workouts.length >= 6
+                ? "Friday becomes a running day: drop Friday Hyrox and review the long Saturday ride. "
+                : "Friday running is off by default. "}
+              Higher stages need longer lunch windows. Sunday remains a rest
+              day.
+            </p>
+            <p className="muted small-text">
+              The 30 stages are milestone ceilings, not an automatic 30-week
+              timeline. Progression depends on completed training and recovery.
+            </p>
+          </details>
         </>
       )}
     </section>
