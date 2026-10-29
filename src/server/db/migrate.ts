@@ -1,6 +1,8 @@
-import { sqlite } from "@/server/db/client";
+import type Database from "better-sqlite3";
 
-sqlite.exec(`
+export function migrateDatabase(sqlite: Database.Database) {
+  sqlite.transaction(() =>
+    sqlite.exec(`
   CREATE TABLE IF NOT EXISTS sync_state (
     provider TEXT PRIMARY KEY,
     last_started_at TEXT,
@@ -30,6 +32,12 @@ sqlite.exec(`
     raw_json TEXT NOT NULL,
     imported_at TEXT NOT NULL
   );
-`);
-
-console.log("Database migration complete");
+  CREATE TABLE IF NOT EXISTS sync_lock (
+    provider TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS activities_started_at_idx ON activities(started_at);
+`),
+  )();
+}

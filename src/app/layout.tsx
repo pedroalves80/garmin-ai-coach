@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Run Coach",
-  description: "A private Garmin-aware running coach for running, Hyrox and cycling.",
+  description:
+    "A private Garmin-aware running coach for running, Hyrox and cycling.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
