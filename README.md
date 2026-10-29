@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Garmin AI Coach
 
-## Getting Started
+Mobile-first personal training coach for running, Hyrox and cycling. The app is designed for private Raspberry Pi deployment and uses Atomic Design for the UI.
 
-First, run the development server:
+## Current status
+
+The first vertical slice is in place:
+
+- Next.js App Router dashboard shell
+- Mobile-first responsive layout
+- Atomic Design components under `src/components`
+- Typed workout and coach contracts
+- Server-only Garmin and OpenAI boundaries
+- Docker and Docker Compose configuration
+- Placeholder deterministic recovery rule
+
+Garmin sync and the OpenAI adapter are intentionally not connected yet. This keeps secrets and external side effects out of the initial UI scaffold.
+
+## Local development
 
 ```bash
+cp .env.example .env
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Raspberry Pi
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create `.env` with server-only secrets, then run:
 
-## Learn More
+```bash
+docker compose up -d --build
+```
 
-To learn more about Next.js, take a look at the following resources:
+The app will be available on port 3000. Keep the Garmin and OpenAI keys out of the repository and never prefix them with `NEXT_PUBLIC_`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Quality checks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run lint
+npm run build
+```
 
-## Deploy on Vercel
+## Planned next slices
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. SQLite and Drizzle schema.
+2. Garmin Personal API token and incremental activity sync.
+3. Deterministic load, HR-at-pace and recovery metrics.
+4. Low-cost OpenAI Responses API coach adapter with structured output validation.
+5. Workout generator and Garmin-ready copy/export workflow.
