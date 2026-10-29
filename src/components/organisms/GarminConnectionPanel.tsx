@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { Button } from "@/components/atoms/Button";
-import { TextInput } from "@/components/atoms/TextInput";
 
 type Props = {
   configured: boolean;
@@ -18,7 +17,6 @@ export function GarminConnectionPanel({
   lastError,
 }: Props) {
   const router = useRouter();
-  const [secret, setSecret] = useState("");
   const [full, setFull] = useState(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -34,7 +32,7 @@ export function GarminConnectionPanel({
         `/api/garmin/sync${full ? "?full=true" : ""}`,
         {
           method: "POST",
-          headers: { "x-sync-secret": secret },
+          headers: { "x-coach-request": "local" },
         },
       );
       const result = await response.json();
@@ -43,7 +41,6 @@ export function GarminConnectionPanel({
       setMessage(
         `Synced ${result.importedActivities} activities and ${result.healthDays} health days.`,
       );
-      setSecret("");
       router.refresh();
     } catch (error) {
       setFailed(true);
@@ -73,17 +70,6 @@ export function GarminConnectionPanel({
       {lastError && <p className="error-text">Last sync: {lastError}</p>}
       {configured ? (
         <form onSubmit={sync} className="sync-form">
-          <label htmlFor="sync-secret">Sync passphrase</label>
-          <TextInput
-            id="sync-secret"
-            type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            autoComplete="off"
-            required
-            minLength={16}
-            placeholder="Your server sync passphrase"
-          />
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -98,8 +84,8 @@ export function GarminConnectionPanel({
         </form>
       ) : (
         <p className="muted">
-          Add your Garmin personal key and sync passphrase to the server
-          environment, then restart. See the project README for setup.
+          Add your Garmin personal key to the server environment, then restart.
+          See the project README for setup.
         </p>
       )}
       <p

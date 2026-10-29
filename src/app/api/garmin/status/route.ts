@@ -10,7 +10,7 @@ export async function GET() {
   const state = repository.status();
   return NextResponse.json(
     {
-      configured: Boolean(config.GARMIN_PERSONAL_API_KEY && config.SYNC_SECRET),
+      configured: Boolean(config.GARMIN_PERSONAL_API_KEY),
       running: repository.isRunning(),
       lastSync: state?.lastCompletedAt ?? null,
       lastError: state?.lastError ?? null,

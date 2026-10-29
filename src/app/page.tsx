@@ -12,7 +12,7 @@ async function Dashboard() {
     <DashboardTemplate
       data={dashboardData()}
       training={trainingDashboardData()}
-      configured={Boolean(config.GARMIN_PERSONAL_API_KEY && config.SYNC_SECRET)}
+      configured={Boolean(config.GARMIN_PERSONAL_API_KEY)}
     />
   );
 }

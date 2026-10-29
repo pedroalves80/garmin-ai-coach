@@ -41,7 +41,6 @@ const names = [
 
 export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   const router = useRouter();
-  const [secret, setSecret] = useState("");
   const [week, setWeek] = useState(data.previewPlan?.weekNumber ?? 1);
   const [start, setStart] = useState(
     data.previewPlan?.start ?? offset(data.monday, 7),
@@ -86,7 +85,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-sync-secret": secret,
+          "x-coach-request": "local",
         },
         body: JSON.stringify(body),
       });
@@ -113,27 +112,17 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         <h2 id="plan-heading">Plan & recovery check-in</h2>
         <StatusBadge>Manual review</StatusBadge>
       </div>
-      <div className="surface workspace-auth">
-        <label htmlFor="training-passphrase">Action passphrase</label>
-        <TextInput
-          id="training-passphrase"
-          type="password"
-          value={secret}
-          onChange={(e) => setSecret(e.target.value)}
-          autoComplete="off"
-          placeholder="Same passphrase used to sync Garmin"
-        />
-        <p className="muted small-text">
-          Used to save check-ins and reviewed weeks. Kept in page memory only.
-        </p>
-        <p
-          role={failed ? "alert" : "status"}
-          aria-live="polite"
-          className={failed ? "error-text" : "muted"}
-        >
-          {message}
-        </p>
-      </div>
+      {message && (
+        <div className="workspace-status">
+          <p
+            role={failed ? "alert" : "status"}
+            aria-live="polite"
+            className={failed ? "error-text" : "muted"}
+          >
+            {message}
+          </p>
+        </div>
+      )}
       <div className="dashboard-grid">
         <form
           className="surface training-form"
@@ -209,7 +198,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Legs, sleep, or anything affecting training"
           />
-          <Button type="submit" disabled={pending || secret.length < 16}>
+          <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Save check-in"}
           </Button>
           <p className="muted small-text">
@@ -334,10 +323,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
               </span>
             </p>
           )}
-          <Button
-            type="submit"
-            disabled={pending || !preview || secret.length < 16}
-          >
+          <Button type="submit" disabled={pending || !preview}>
             {pending ? "Saving…" : "Save reviewed week"}
           </Button>
         </form>

@@ -36,9 +36,9 @@ npm run dev
 
 Open http://localhost:3000.
 
-Set `GARMIN_PERSONAL_API_KEY` and replace `SYNC_SECRET` with a random passphrase of at least 16 characters in `.env`. Keep `APP_SESSION_SECRET` set to a separate random value for the upcoming application session feature. Restart after changing environment variables. Leave the OpenAI key blank for this phase; syncing makes no AI calls.
+Set `GARMIN_PERSONAL_API_KEY` in `.env` and restart after changing environment variables. No login, session key or passphrase is required to use this trusted-local app. Leave the OpenAI key blank for this phase; syncing makes no AI calls. Existing `APP_SESSION_SECRET` values are unused and may remain in older `.env` files.
 
-In the Garmin panel, enter your sync passphrase (not your Garmin key). It is sent in a request header and kept only in page memory. The first sync imports the last 90 days. Later syncs replay from seven days before the last successful checkpoint to capture late uploads and corrections. Use “Recheck the last 90 days” for older edits within that period. Deletions in Garmin are not mirrored yet.
+In the Garmin panel, press **Sync Garmin**. The Garmin key stays on the server. The first sync imports the last 90 days. Later syncs replay from seven days before the last successful checkpoint to capture late uploads and corrections. Use “Recheck the last 90 days” for older edits within that period. Deletions in Garmin are not mirrored yet.
 
 Each successful sync updates normalized fields and retained JSON in a single database transaction. A failed sync preserves existing records and the last successful checkpoint. SQLite leases prevent concurrent imports across app processes. Missing sleep/HR measurements remain null, rather than fabricated zero values.
 
@@ -54,13 +54,13 @@ Dashboard weeks start Monday in Europe/Lisbon. Hyrox is identified by its type o
 - Weekly distance is calculated from every step, including warm-ups, cool-downs and nested repeats. Distance steps are exact; time-step distances use the midpoint of the target pace range and are explicitly estimated. The editable HR planning pace estimates duration, not the effort target. Tuesday strides and Thursday tempo remain a small, fixed amount of quality while volume builds; cutback weeks replace them with base running.
 - Recorded distance is matched by local day. “Distance met” means at least 90% of the estimated distance, not that target pace, HR or session intent was achieved. Several runs on one day are combined; future days are not marked missed.
 
-Mutation routes `POST /api/training/check-in` and `POST /api/training/plan` use the same `x-sync-secret` passphrase and origin validation as sync. Enter that passphrase in the training workspace to save. It remains in page memory and is never stored in browser local storage.
+Mutation routes `POST /api/training/check-in`, `POST /api/training/plan` and `POST /api/garmin/sync` accept normal same-origin app requests. The UI adds a non-secret `x-coach-request: local` header; the server checks the request origin and Fetch Metadata. Cross-origin forms and foreign websites cannot use these browser actions. Requests addressed to unrecognized public hostnames are rejected for both reads and writes to help prevent DNS rebinding. Common loopback, private LAN/overlay IPs, single-label hostnames, `.local`, `.localhost` and `.home.arpa` names work by default. Use `APP_ALLOWED_ORIGINS` for another custom private name.
 
 Progression rules are transparent app heuristics, not validated injury predictions: recent pain or high fatigue/soreness suggests reduction; missing/stale sync, incomplete weeks, insufficient adherence or recovery check-ins suggest holding. An increase requires a finished recent plan, at least 90% recorded distance, three check-ins over seven days including today/yesterday, and consistently low fatigue/soreness. A competing-sport time rise over 25% also triggers a review. The increase suggestion is capped at the smaller of 2 km or 5%; this is a conservative implementation choice, not a universal safe percentage. Scheduled cutback stages remain reductions. The timeline can therefore extend beyond 30 weeks.
 
 The single-session review flag compares the longest planned run with the longest recorded in 30 days; a >10% difference asks for review. It is informed by this [2025 cohort study](https://pubmed.ncbi.nlm.nih.gov/40623829/), not a guarantee of safety. The broader evidence does not establish a universal weekly progression rule: see the [systematic review](https://pmc.ncbi.nlm.nih.gov/articles/PMC9528699/).
 
-The current app is single-user and intended for a private network. The sync endpoint requires a secret; dashboard reads do not yet have user-session authentication. Use a private VPN or authenticated HTTPS reverse proxy for remote access; do not expose the app directly to the public internet.
+This is a single-user app with no sign-in. Access control is your network boundary: anyone who can reach the app through an accepted hostname can view its data and use it. A Raspberry Pi alone does not restrict network access; keep the service on your trusted LAN/VPN and do not port-forward it publicly. Host/origin protections do not authenticate users or replace a firewall.
 
 ## Raspberry Pi
 
@@ -74,7 +74,7 @@ The app will be available on port 3000. Use a Raspberry Pi with a 64-bit OS (ARM
 
 For local production mode, `npm run build && npm start` prepares the standalone server with its CSS/public assets and loads `.env`. The launcher resolves `DATABASE_PATH` to an absolute path before Next.js changes directory, so relative databases stay in the project's persistent `data` directory, outside `.next`. SQLite tables are created on first use; `npm run db:migrate` also initializes them explicitly. Back up SQLite with its online backup API rather than copying a live WAL database file alone.
 
-The protected sync route is `POST /api/garmin/sync` with the `x-sync-secret` header. The status route is `GET /api/garmin/status`.
+For optional server-to-server jobs, set `SYNC_SECRET` to a random value of at least 16 characters and send it as `x-sync-secret`. This supports requests without browser Origin headers and is never entered in the app. The status route is `GET /api/garmin/status`.
 
 ## Quality checks
 
@@ -88,7 +88,7 @@ npm run build
 
 ## Planned next slices
 
-1. Application authentication and scheduled syncing.
+1. Scheduled syncing for this trusted-local deployment.
 2. Detailed activity/FIT analysis for HR drift and stronger route comparisons.
 3. Low-cost OpenAI Responses API coach adapter with structured output validation.
 4. Workout FIT export workflow.

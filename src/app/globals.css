@@ -37,14 +37,8 @@
   font-size: 1.5rem;
   font-variant-numeric: tabular-nums;
 }
-.workspace-auth {
+.workspace-status {
   margin-bottom: 16px;
-}
-.workspace-auth > input {
-  display: block;
-  width: 100%;
-  max-width: 430px;
-  margin-top: 8px;
 }
 .training-form {
   display: grid;
@@ -59,8 +53,7 @@
 }
 .training-form input,
 .training-form select,
-.training-form textarea,
-.workspace-auth input {
+.training-form textarea {
   background: var(--background);
   color: var(--foreground);
   border: 1px solid var(--line);
