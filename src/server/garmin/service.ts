@@ -6,7 +6,7 @@ import { runGarminSync } from "./sync";
 
 let cached: { key: string; client: GarminClient } | undefined;
 
-export function syncGarminData(full = false) {
+export function syncGarminData(full = false, signal?: AbortSignal) {
   const config = getGarminConfig();
   const key = config.GARMIN_PERSONAL_API_KEY;
   if (!key)
@@ -17,5 +17,8 @@ export function syncGarminData(full = false) {
     cached = { key, client: new GarminClient(key) };
   return runGarminSync(new GarminRepository(getDatabase()), cached.client, {
     full,
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(5 * 60_000)])
+      : AbortSignal.timeout(5 * 60_000),
   });
 }

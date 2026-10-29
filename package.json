@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/prepare-standalone.mjs",
+    "postbuild": "npm run build:worker && node scripts/prepare-standalone.mjs",
+    "build:worker": "tsc -p tsconfig.worker.json",
+    "worker": "node --env-file-if-exists=.env build/worker/server/garmin/worker.js",
     "start": "node --env-file-if-exists=.env scripts/start.mjs",
     "lint": "eslint",
     "db:migrate": "tsx --env-file-if-exists=.env src/server/db/migrate-cli.ts",

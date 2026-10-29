@@ -8,6 +8,18 @@ export const syncState = sqliteTable("sync_state", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const syncSchedule = sqliteTable("sync_schedule", {
+  provider: text("provider").primaryKey(),
+  nextRunAt: text("next_run_at").notNull(),
+  lastAttemptAt: text("last_attempt_at"),
+  lastSeenSync: text("last_seen_sync"),
+  failures: integer("failures").notNull().default(0),
+  lastError: text("last_error"),
+  workerOwner: text("worker_owner"),
+  workerExpiresAt: text("worker_expires_at"),
+  heartbeatAt: text("heartbeat_at"),
+});
+
 export const activities = sqliteTable("activities", {
   id: text("id").primaryKey(),
   providerActivityId: text("provider_activity_id").notNull().unique(),

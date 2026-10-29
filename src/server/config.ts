@@ -15,6 +15,10 @@ const envSchema = z.object({
     z.string().min(16).optional(),
   ),
   DATABASE_PATH: z.string().default("./data/coach.db"),
+  GARMIN_AUTO_SYNC: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 export function getConfig() {
@@ -24,6 +28,7 @@ export function getConfig() {
     OPENAI_MODEL: process.env.OPENAI_MODEL,
     SYNC_SECRET: process.env.SYNC_SECRET,
     DATABASE_PATH: process.env.DATABASE_PATH,
+    GARMIN_AUTO_SYNC: process.env.GARMIN_AUTO_SYNC,
   });
 }
 

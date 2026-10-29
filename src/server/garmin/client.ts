@@ -29,15 +29,17 @@ export class GarminClient {
   private async get(
     path: string,
     query: Record<string, string>,
+    signal?: AbortSignal,
     renewed = false,
   ): Promise<unknown> {
-    const token = await this.tokens.get();
+    const token = await this.tokens.get(signal);
     const url = new URL(path, base);
     url.search = new URLSearchParams(query).toString();
     try {
       return await requestJson(
         url.toString(),
         {
+          signal,
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: "application/json",
@@ -52,7 +54,7 @@ export class GarminClient {
         !renewed
       ) {
         this.tokens.invalidate();
-        return this.get(path, query, true);
+        return this.get(path, query, signal, true);
       }
       throw error;
     }
@@ -61,20 +63,25 @@ export class GarminClient {
   async activities(
     startDate: string,
     endDate: string,
+    signal?: AbortSignal,
   ): Promise<GarminActivity[]> {
     const all: GarminActivity[] = [];
     const seen = new Set<string>();
     for (let start = 0; start < 100_000; start += 99) {
       const page = parsePayload(
         activityPage,
-        (await this.get(endpoints.activities, {
-          startDate,
-          endDate,
-          start: String(start),
-          limit: "99",
-          sortOrder: "asc",
-          excludeChildren: "true",
-        })) ?? [],
+        (await this.get(
+          endpoints.activities,
+          {
+            startDate,
+            endDate,
+            start: String(start),
+            limit: "99",
+            sortOrder: "asc",
+            excludeChildren: "true",
+          },
+          signal,
+        )) ?? [],
       );
       for (const item of page) {
         const id = String(item.activityId);
@@ -92,15 +99,27 @@ export class GarminClient {
     );
   }
 
-  async health(startDate: string, endDate: string): Promise<GarminHealth[]> {
-    const value = await this.get(endpoints.health, { startDate, endDate });
+  async health(
+    startDate: string,
+    endDate: string,
+    signal?: AbortSignal,
+  ): Promise<GarminHealth[]> {
+    const value = await this.get(
+      endpoints.health,
+      { startDate, endDate },
+      signal,
+    );
     return value === undefined ? [] : parsePayload(healthPage, value).data;
   }
 
-  async sleep(startDate: string, endDate: string): Promise<GarminSleep[]> {
+  async sleep(
+    startDate: string,
+    endDate: string,
+    signal?: AbortSignal,
+  ): Promise<GarminSleep[]> {
     return parsePayload(
       sleepPage,
-      (await this.get(endpoints.sleep, { startDate, endDate })) ?? [],
+      (await this.get(endpoints.sleep, { startDate, endDate }, signal)) ?? [],
     );
   }
 }

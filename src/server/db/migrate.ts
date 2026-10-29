@@ -37,6 +37,17 @@ export function migrateDatabase(sqlite: Database.Database) {
     owner TEXT NOT NULL,
     expires_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS sync_schedule (
+    provider TEXT PRIMARY KEY,
+    next_run_at TEXT NOT NULL,
+    last_attempt_at TEXT,
+    last_seen_sync TEXT,
+    failures INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    worker_owner TEXT,
+    worker_expires_at TEXT,
+    heartbeat_at TEXT
+  );
   CREATE INDEX IF NOT EXISTS activities_started_at_idx ON activities(started_at);
   CREATE TABLE IF NOT EXISTS daily_check_ins (
     day TEXT PRIMARY KEY,

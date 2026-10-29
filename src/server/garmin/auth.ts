@@ -25,11 +25,11 @@ export class GarminTokenProvider {
     this.cached = undefined;
   }
 
-  async get(): Promise<string> {
+  async get(signal?: AbortSignal): Promise<string> {
     if (this.cached && this.cached.expiresAt > Date.now())
       return this.cached.token;
     if (this.pending) return this.pending;
-    this.pending = this.obtain();
+    this.pending = this.obtain(signal);
     try {
       return await this.pending;
     } finally {
@@ -37,12 +37,13 @@ export class GarminTokenProvider {
     }
   }
 
-  private async obtain() {
+  private async obtain(signal?: AbortSignal) {
     const body = (
       await requestText(
         tokenUrl,
         {
           method: "POST",
+          signal,
           headers: {
             Authorization: `ApiKey ${this.key}`,
             Accept: "text/plain, application/json",

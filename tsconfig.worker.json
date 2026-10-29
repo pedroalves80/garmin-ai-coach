@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "rootDir": "src",
+    "outDir": "build/worker",
+    "noEmit": false,
+    "incremental": false,
+    "allowJs": false,
+    "plugins": []
+  },
+  "include": ["src/server/garmin/worker.ts"],
+  "exclude": ["node_modules", "build"]
+}

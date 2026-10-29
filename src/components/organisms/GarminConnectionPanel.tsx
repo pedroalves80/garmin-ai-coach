@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { Button } from "@/components/atoms/Button";
+import { AutoSyncSummary } from "@/components/molecules/AutoSyncSummary";
+import type { GarminStatus } from "@/shared/types/sync";
 
 type Props = {
   configured: boolean;
@@ -21,6 +23,43 @@ export function GarminConnectionPanel({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
+  const [status, setStatus] = useState<GarminStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const seenSync = useRef(lastSync);
+  useEffect(() => {
+    const controller = new AbortController();
+    let loading = false;
+    async function load() {
+      if (loading || document.hidden) return;
+      loading = true;
+      try {
+        const response = await fetch("/api/garmin/status", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Status unavailable");
+        const next: GarminStatus = await response.json();
+        setStatus(next);
+        setStatusError(false);
+        if (next.lastSync !== seenSync.current) {
+          seenSync.current = next.lastSync;
+          router.refresh();
+        }
+      } catch {
+        if (!controller.signal.aborted) setStatusError(true);
+      } finally {
+        loading = false;
+      }
+    }
+    const timer = setInterval(() => void load(), 30_000);
+    document.addEventListener("visibilitychange", load);
+    void load();
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [router, lastSync]);
 
   async function sync(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,6 +80,14 @@ export function GarminConnectionPanel({
       setMessage(
         `Synced ${result.importedActivities} activities and ${result.healthDays} health days.`,
       );
+      const refreshed = await fetch("/api/garmin/status", {
+        cache: "no-store",
+      });
+      if (refreshed.ok) {
+        const next: GarminStatus = await refreshed.json();
+        setStatus(next);
+        seenSync.current = next.lastSync;
+      }
       router.refresh();
     } catch (error) {
       setFailed(true);
@@ -63,11 +110,21 @@ export function GarminConnectionPanel({
         </StatusBadge>
       </div>
       <p className="muted">
-        {lastSync
-          ? `Last sync: ${new Date(lastSync).toLocaleString("en-GB", { timeZone: "Europe/Lisbon" })}`
+        {(status?.lastSync ?? lastSync)
+          ? `Last sync: ${new Date((status?.lastSync ?? lastSync)!).toLocaleString("en-GB", { timeZone: "Europe/Lisbon" })}`
           : "No sync yet. Your activities and health data will appear here."}
       </p>
-      {lastError && <p className="error-text">Last sync: {lastError}</p>}
+      {(status ? status.lastError : lastError) && (
+        <p className="error-text">
+          Last sync: {status ? status.lastError : lastError}
+        </p>
+      )}
+      <AutoSyncSummary status={status} />
+      {statusError && (
+        <p className="error-text small-text">
+          Sync status is unavailable. It will retry when the app is visible.
+        </p>
+      )}
       {configured ? (
         <form onSubmit={sync} className="sync-form">
           <label className="checkbox-label">
@@ -78,8 +135,8 @@ export function GarminConnectionPanel({
             />
             Recheck the last 90 days
           </label>
-          <Button disabled={pending} type="submit">
-            {pending ? "Syncing…" : "Sync Garmin"}
+          <Button disabled={pending || status?.running} type="submit">
+            {pending || status?.running ? "Syncing…" : "Sync Garmin"}
           </Button>
         </form>
       ) : (

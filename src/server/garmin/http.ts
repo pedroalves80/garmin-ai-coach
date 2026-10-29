@@ -11,6 +11,11 @@ export class GarminHttpError extends Error {
 }
 
 type Fetcher = typeof fetch;
+export class GarminNetworkError extends Error {
+  constructor() {
+    super("Garmin could not be reached. Check the network and retry.");
+  }
+}
 type Sleep = (ms: number) => Promise<void>;
 const wait: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -21,19 +26,20 @@ async function requestResponse(
   sleep: Sleep = wait,
 ): Promise<Response> {
   for (let attempt = 0; attempt < 3; attempt++) {
+    options.signal?.throwIfAborted();
     let response: Response;
     try {
       response = await fetcher(url, {
         ...options,
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(15_000),
+        signal: options.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)])
+          : AbortSignal.timeout(15_000),
       });
     } catch {
-      if (attempt === 2)
-        throw new Error(
-          "Garmin could not be reached. Check the network and retry.",
-        );
+      options.signal?.throwIfAborted();
+      if (attempt === 2) throw new GarminNetworkError();
       await sleep(500 * 2 ** attempt);
       continue;
     }

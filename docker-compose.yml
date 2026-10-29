@@ -1,5 +1,6 @@
 services:
   coach:
+    image: garmin-ai-coach:local
     build: .
     ports:
       - "3000:3000"
@@ -8,6 +9,25 @@ services:
     volumes:
       - coach-data:/app/data
     restart: unless-stopped
+    init: true
+  garmin-worker:
+    image: garmin-ai-coach:local
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - coach-data:/app/data
+    command: ["node", "build/worker/server/garmin/worker.js"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    healthcheck:
+      test:
+        ["CMD", "node", "build/worker/server/garmin/worker.js", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
 volumes:
   coach-data:
