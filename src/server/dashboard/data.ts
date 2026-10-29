@@ -1,6 +1,7 @@
 import { GarminRepository } from "../db/garmin-repository";
 import { getDatabase } from "../db/client";
 import { calendarDate, shiftDay } from "../garmin/sync";
+import { sportGroup } from "../training/metrics";
 
 export function dashboardData(
   repository = new GarminRepository(getDatabase()),
@@ -18,17 +19,7 @@ export function dashboardData(
       Date.parse(item.startedAt) <= now.getTime()
     );
   });
-  const runs = week.filter((item) =>
-    [
-      "running",
-      "trail_running",
-      "treadmill_running",
-      "track_running",
-      "virtual_run",
-      "ultra_run",
-      "indoor_running",
-    ].includes(item.sportType),
-  );
+  const runs = week.filter((item) => sportGroup(item) === "running");
   const health = repository.latestHealth();
   return {
     weekStart: monday,
@@ -37,7 +28,9 @@ export function dashboardData(
       1000,
     runningCount: runs.length,
     trainingMinutes:
-      week.reduce((total, item) => total + (item.durationSeconds ?? 0), 0) / 60,
+      week
+        .filter((item) => sportGroup(item) !== "wellness")
+        .reduce((total, item) => total + (item.durationSeconds ?? 0), 0) / 60,
     lastSync: repository.status(),
     health: health
       ? {

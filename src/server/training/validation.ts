@@ -1,0 +1,76 @@
+import { z } from "zod";
+import type { PlanStep, TrainingPlan } from "../../shared/types/metrics";
+
+export const checkInSchema = z
+  .object({
+    day: z.iso.date(),
+    fatigue: z.number().int().min(1).max(5),
+    soreness: z.number().int().min(1).max(5),
+    pain: z.number().int().min(0).max(10),
+    notes: z.string().trim().max(300).default(""),
+  })
+  .strict();
+
+export const planSettingsSchema = z
+  .object({
+    weekNumber: z.number().int().min(1).max(30),
+    targetKm: z.number().min(20).max(80).optional(),
+    start: z.iso
+      .date()
+      .refine(
+        (day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 1,
+        "Choose a Monday",
+      ),
+    easyPace: z.number().int().min(240).max(600),
+    tempoPace: z.number().int().min(180).max(420),
+  })
+  .strict();
+
+const targetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("hr"),
+    min: z.number().min(40).max(230),
+    max: z.number().min(40).max(230),
+  }),
+  z.object({
+    kind: z.literal("pace"),
+    min: z.number().positive(),
+    max: z.number().positive(),
+  }),
+]);
+const stepSchema: z.ZodType<PlanStep> = z.lazy(() =>
+  z.union([
+    z.object({
+      kind: z.literal("step"),
+      name: z.enum(["Warm Up", "Run", "Recover", "Cool Down"]),
+      amount: z.discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("distance"),
+          meters: z.number().positive(),
+        }),
+        z.object({ kind: z.literal("time"), seconds: z.number().positive() }),
+      ]),
+      target: targetSchema,
+    }),
+    z.object({
+      kind: z.literal("repeat"),
+      times: z.number().int().min(1).max(20),
+      steps: z.array(stepSchema).min(1),
+    }),
+  ]),
+);
+export const savedPlanSchema: z.ZodType<TrainingPlan> =
+  planSettingsSchema.extend({
+    targetKm: z.number().min(20).max(80),
+    cutback: z.boolean(),
+    workouts: z
+      .array(
+        z.object({
+          dayOffset: z.number().int().min(0).max(6),
+          title: z.string(),
+          type: z.enum(["base", "strides", "quality", "long", "recovery"]),
+          steps: z.array(stepSchema).min(1),
+        }),
+      )
+      .min(1),
+  });

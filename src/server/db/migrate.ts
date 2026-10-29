@@ -38,6 +38,19 @@ export function migrateDatabase(sqlite: Database.Database) {
     expires_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS activities_started_at_idx ON activities(started_at);
+  CREATE TABLE IF NOT EXISTS daily_check_ins (
+    day TEXT PRIMARY KEY,
+    fatigue INTEGER NOT NULL CHECK(fatigue BETWEEN 1 AND 5),
+    soreness INTEGER NOT NULL CHECK(soreness BETWEEN 1 AND 5),
+    pain INTEGER NOT NULL CHECK(pain BETWEEN 0 AND 10),
+    notes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS training_plans (
+    week_start TEXT PRIMARY KEY,
+    plan_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `),
   )();
 }

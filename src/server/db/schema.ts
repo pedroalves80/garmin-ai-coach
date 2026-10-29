@@ -31,3 +31,18 @@ export const dailyHealth = sqliteTable("daily_health", {
   rawJson: text("raw_json").notNull(),
   importedAt: text("imported_at").notNull(),
 });
+
+export const dailyCheckIns = sqliteTable("daily_check_ins", {
+  day: text("day").primaryKey(),
+  fatigue: integer("fatigue").notNull(),
+  soreness: integer("soreness").notNull(),
+  pain: integer("pain").notNull(),
+  notes: text("notes").notNull().default(""),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const trainingPlans = sqliteTable("training_plans", {
+  weekStart: text("week_start").primaryKey(),
+  planJson: text("plan_json").notNull(),
+  createdAt: text("created_at").notNull(),
+});

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { dashboardData } from "@/server/dashboard/data";
 import { getGarminConfig } from "@/server/config";
+import { trainingDashboardData } from "@/server/training/dashboard";
 
 async function Dashboard() {
   await connection();
@@ -10,6 +11,7 @@ async function Dashboard() {
   return (
     <DashboardTemplate
       data={dashboardData()}
+      training={trainingDashboardData()}
       configured={Boolean(config.GARMIN_PERSONAL_API_KEY && config.SYNC_SECRET)}
     />
   );

@@ -2,12 +2,17 @@ import { MetricCard } from "@/components/molecules/MetricCard";
 import { ActivityHistory } from "@/components/organisms/ActivityHistory";
 import { GarminConnectionPanel } from "@/components/organisms/GarminConnectionPanel";
 import type { DashboardData } from "@/server/dashboard/data";
+import type { TrainingDashboardData } from "@/server/training/dashboard";
+import { TrainingMetrics } from "@/components/organisms/TrainingMetrics";
+import { TrainingWorkspace } from "@/components/organisms/TrainingWorkspace";
 
 export function DashboardTemplate({
   data,
+  training,
   configured,
 }: {
   data: DashboardData;
+  training: TrainingDashboardData;
   configured: boolean;
 }) {
   const hasSync = Boolean(data.lastSync?.lastCompletedAt);
@@ -37,7 +42,7 @@ export function DashboardTemplate({
         <MetricCard
           label="All training"
           value={hasSync ? `${Math.round(data.trainingMinutes)} min` : "—"}
-          detail="All recorded sports this week"
+          detail="Training time · wellness separate"
         />
         <MetricCard
           label="Latest sleep"
@@ -75,13 +80,16 @@ export function DashboardTemplate({
           </section>
         </div>
       </div>
+      <TrainingMetrics data={training} />
+      <TrainingWorkspace data={training} />
       <p className="attribution muted">
         Data provided by Garmin devices. Values reflect the last successful
-        sync. Coaching and plan adaptation are still under development.
+        sync. Volume reviews use app rules; AI coaching is not connected yet.
       </p>
       <nav className="bottom-nav" aria-label="Primary navigation">
         <a href="#overview">Overview</a>
-        <a href="#activities">Activities</a>
+        <a href="#progress">Progress</a>
+        <a href="#plan">Plan</a>
         <a href="#connection">Garmin</a>
       </nav>
     </main>
