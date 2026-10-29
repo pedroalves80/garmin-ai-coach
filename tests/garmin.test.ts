@@ -18,6 +18,39 @@ import {
 } from "../src/server/garmin/schemas";
 
 const now = new Date("2026-10-29T12:00:00Z");
+test("Personal API plain-text JWT is cached and forwarded as the bearer token", async () => {
+  const token = "header.payload.signature";
+  let issued = 0;
+  const client = new GarminClient("fixture-key", async (input, init) => {
+    if (String(input).includes("/token")) {
+      issued++;
+      return new Response(token, { headers: { "Content-Type": "text/plain" } });
+    }
+    assert.equal(
+      new Headers(init?.headers).get("Authorization"),
+      `Bearer ${token}`,
+    );
+    return new Response("[]", {
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  await client.activities("2026-10-28", "2026-10-29");
+  await client.sleep("2026-10-28", "2026-10-29");
+  assert.equal(issued, 1);
+});
+
+test("unexpected plain-text responses are rejected without exposing their contents", async () => {
+  const provider = new GarminTokenProvider(
+    "fixture-key",
+    async () => new Response("<html>private diagnostic</html>"),
+  );
+  await assert.rejects(
+    provider.get(),
+    (error) =>
+      error instanceof GarminPayloadError &&
+      !error.message.includes("private diagnostic"),
+  );
+});
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
 function activity(id: number, distance = 5000) {

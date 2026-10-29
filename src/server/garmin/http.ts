@@ -14,12 +14,12 @@ type Fetcher = typeof fetch;
 type Sleep = (ms: number) => Promise<void>;
 const wait: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function requestJson(
+async function requestResponse(
   url: string,
   options: RequestInit,
   fetcher: Fetcher = fetch,
   sleep: Sleep = wait,
-): Promise<unknown> {
+): Promise<Response> {
   for (let attempt = 0; attempt < 3; attempt++) {
     let response: Response;
     try {
@@ -57,12 +57,35 @@ export async function requestJson(
       continue;
     }
     if (!response.ok) throw new GarminHttpError(response.status);
-    if (response.status === 204) return undefined;
-    try {
-      return await response.json();
-    } catch {
-      throw new Error("Garmin returned invalid JSON.");
-    }
+    return response;
   }
   throw new Error("Garmin retry limit reached.");
+}
+
+export async function requestJson(
+  url: string,
+  options: RequestInit,
+  fetcher: Fetcher = fetch,
+  sleep: Sleep = wait,
+): Promise<unknown> {
+  const response = await requestResponse(url, options, fetcher, sleep);
+  if (response.status === 204) return undefined;
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("Garmin returned invalid JSON.");
+  }
+}
+
+export async function requestText(
+  url: string,
+  options: RequestInit,
+  fetcher: Fetcher = fetch,
+): Promise<string> {
+  const response = await requestResponse(url, options, fetcher);
+  try {
+    return await response.text();
+  } catch {
+    throw new Error("Garmin response could not be read. Retry the sync.");
+  }
 }

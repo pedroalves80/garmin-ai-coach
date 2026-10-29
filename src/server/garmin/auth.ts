@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { parsePayload } from "./schemas";
-import { requestJson } from "./http";
+import { requestText } from "./http";
 
 const tokenSchema = z.object({
   access_token: z.string().min(1),
   expires_in: z.number().positive().optional(),
 });
+const plainTokenSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 const tokenUrl =
   "https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token";
 
@@ -35,17 +38,28 @@ export class GarminTokenProvider {
   }
 
   private async obtain() {
-    const data = parsePayload(
-      tokenSchema,
-      await requestJson(
+    const body = (
+      await requestText(
         tokenUrl,
         {
           method: "POST",
-          headers: { Authorization: `ApiKey ${this.key}` },
+          headers: {
+            Authorization: `ApiKey ${this.key}`,
+            Accept: "text/plain, application/json",
+          },
         },
         this.fetcher,
-      ),
-    );
+      )
+    ).trim();
+    // The live Personal API returns a raw JWT as text/plain. JSON envelopes are
+    // also understood for compatibility; arbitrary HTML/text is never a token.
+    let payload: unknown;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      payload = { access_token: parsePayload(plainTokenSchema, body) };
+    }
+    const data = parsePayload(tokenSchema, payload);
     const lifetime = Math.min(data.expires_in ?? 86400, 86400);
     this.cached = {
       token: data.access_token,
