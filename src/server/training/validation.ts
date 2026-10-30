@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { raceSchema } from "./commitment-repository";
 import { runningTargetsSchema } from "./athlete-repository";
 import type { PlanStep, TrainingPlan } from "../../shared/types/metrics";
 
@@ -28,6 +29,11 @@ export const planSettingsSchema = z
   .strict();
 
 const targetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("effort"),
+    min: z.number().int().min(1).max(10),
+    max: z.number().int().min(1).max(10),
+  }),
   z.object({
     kind: z.literal("hr"),
     min: z.number().min(40).max(230),
@@ -85,7 +91,15 @@ export const savedPlanSchema: z.ZodType<TrainingPlan> =
         z.object({
           dayOffset: z.number().int().min(0).max(6),
           title: z.string(),
-          type: z.enum(["base", "strides", "quality", "long", "recovery"]),
+          type: z.enum([
+            "base",
+            "strides",
+            "quality",
+            "long",
+            "recovery",
+            "race",
+          ]),
+          race: raceSchema.optional(),
           steps: z.array(stepSchema).min(1),
         }),
       )

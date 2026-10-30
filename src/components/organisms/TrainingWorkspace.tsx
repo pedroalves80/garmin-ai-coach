@@ -1,5 +1,6 @@
 "use client";
-
+import { TrainingCalendarManager } from "./TrainingCalendarManager";
+import { applyCommitments, calendarGate } from "@/shared/commitment-calendar";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
@@ -9,6 +10,7 @@ import {
   planKm,
   minimumRunKm,
   volumeMilestones,
+  workoutKm,
 } from "@/shared/training-plan";
 import { developedPlan } from "@/shared/plan-development";
 import { WeeklyLoadReview } from "./WeeklyLoadReview";
@@ -119,21 +121,84 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   }
   const saved =
     preview &&
-    initial?.start === start &&
-    initial.workouts.every((w) =>
+    !data.commitments.pauses.some(
+      (p) => !p.cancelled && p.staleWeeks?.includes(start),
+    ) &&
+    data.plans.some(
+      (p) =>
+        p.start === start &&
+        p.weekNumber === week &&
+        p.targetKm === preview.targetKm &&
+        p.easyPace === preview.easyPace &&
+        p.tempoPace === preview.tempoPace,
+    ) &&
+    (data.plans.find((p) => p.start === start)?.workouts ?? []).every((w) =>
       preview!.workouts.some((next) => sameWorkout(w, next)),
     ) &&
-    savedKey ===
+    (savedKey ===
       settingsKey(
         start,
         week,
         preview.targetKm,
         preview.easyPace,
         preview.tempoPace,
-      );
+      ) ||
+      !!data.reviewedCalendars[start]);
+  const calendar = preview
+    ? saved && data.reviewedCalendars[start]
+      ? data.reviewedCalendars[start]
+      : applyCommitments(
+          buildWeekSchedule(
+            preview,
+            data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
+            data.preferences,
+          ),
+          preview,
+          data.commitments,
+          data.athlete.targets,
+          data.calendarOptions,
+        )
+    : null;
+  const effectiveRuns =
+    calendar?.days
+      .flatMap((d) => d.sessions)
+      .filter((s) => s.session.sport === "running") ?? [];
+  const effectiveKm = effectiveRuns.reduce(
+    (n, s) =>
+      n +
+      (s.session.sport === "running"
+        ? workoutKm(s.session.workout, preview!.easyPace)
+        : 0),
+    0,
+  );
+  const gate = calendarGate(data.commitments, data.today, start);
+  function viewDate(day: string, baseline = false) {
+    const d = new Date(`${day}T12:00:00Z`),
+      index = (d.getUTCDay() + 6) % 7;
+    const monday = offset(day, -index);
+    const p = data.plans.find((p) => p.start === monday) ?? initial;
+    setStart(monday < data.monday ? data.monday : monday);
+    setWeek(p?.weekNumber ?? 1);
+    setTargetKm(String(baseline ? 20 : (p?.targetKm ?? 25)));
+    setEasy(formatPace(p?.easyPace ?? data.athlete.easyPace));
+    setTempo(formatPace(p?.tempoPace ?? data.athlete.tempoPace));
+    setSelectedDay(monday < data.monday ? 0 : index);
+    requestAnimationFrame(() =>
+      document.getElementById("day-schedule-heading")?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+        block: "start",
+      }),
+    );
+  }
 
   return (
     <section className="screen-stack" aria-label="Weekly workout planner">
+      <TrainingCalendarManager data={data} onView={viewDate} />
+      {gate.blocked && (
+        <p className="inline-notice small-text">{gate.reason}</p>
+      )}
       {initial &&
         initial.start === start &&
         initial.weekNumber === week &&
@@ -216,11 +281,11 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         </div>
         <div className="plan-totals">
           <strong>
-            {preview ? planKm(preview).toFixed(1) : "—"}
+            {preview ? effectiveKm.toFixed(1) : "—"}
             <span>km planned</span>
           </strong>
           <strong>
-            {preview?.workouts.length ?? "—"}
+            {preview ? effectiveRuns.length : "—"}
             <span>running days</span>
           </strong>
           <span className="muted small-text">
@@ -277,7 +342,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
                 type="date"
                 required
                 min={data.monday}
-                max={offset(data.monday, 210)}
+                max={offset(data.monday, 730)}
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
@@ -337,8 +402,10 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         <div className="plan-save-row">
           <p className="muted small-text">
             Saving a changed week replaces daily adjustments. All steps use
-            distance. Every run totals at least {minimumRunKm} km, including
-            warm-up and cool-down.
+            distance. Training runs total at least {minimumRunKm} km, including
+            warm-up and cool-down. Races use the fixed course distance. The base
+            week is {preview ? planKm(preview).toFixed(1) : "—"} km before race
+            and break adjustments.
           </p>
           <Button disabled={pending || !preview || !!saved} type="submit">
             {pending ? "Saving…" : "Save reviewed week"}
@@ -356,15 +423,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       {preview && (
         <WeeklyLoadReview
           plan={preview}
-          calendar={
-            saved && data.previewCalendar?.start === start
-              ? data.previewCalendar
-              : buildWeekSchedule(
-                  preview,
-                  data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
-                  data.preferences,
-                )
-          }
+          calendar={calendar!}
           load={data.load}
           development={data.development}
         />
@@ -373,15 +432,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         <WeeklySchedule
           key={start}
           plan={preview}
-          calendar={
-            saved && data.previewCalendar?.start === start
-              ? data.previewCalendar
-              : buildWeekSchedule(
-                  preview,
-                  data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
-                  data.preferences,
-                )
-          }
+          calendar={calendar!}
           initialWeek={data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES}
           saved={!!saved}
           today={data.today}

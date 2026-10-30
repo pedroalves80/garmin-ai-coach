@@ -44,8 +44,8 @@ export function developedPlan(
         ? "recovery"
         : volume > prior + 0.05
           ? previous?.cutback &&
-            (previous.weekNumber % 4 === 0 ||
-              previous.development?.phase === "cutback")
+            (previous.development?.phase === "cutback" ||
+              (!previous.development && previous.weekNumber % 4 === 0))
             ? "return"
             : "volume"
           : "consolidate";

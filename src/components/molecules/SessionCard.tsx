@@ -30,8 +30,12 @@ export function SessionCard({
       <div className="section-heading">
         <div>
           <span className="eyebrow">
-            {session.slot === "lunch" ? "First session" : "Later session"} ·{" "}
-            {session.sport}
+            {session.slot === "event"
+              ? `Race${session.sport === "running" && session.workout.race?.startTime ? ` · ${session.workout.race.startTime}` : ""}`
+              : session.slot === "lunch"
+                ? "First session"
+                : "Later session"}{" "}
+            · {session.sport}
           </span>
           <h3>{title}</h3>
         </div>
@@ -62,6 +66,16 @@ export function SessionCard({
             {formatWorkoutDistance(session.workout, easyPace)} total · Distance
             steps for Garmin
           </p>
+          {session.workout.race && (
+            <p className="inline-notice small-text">
+              Fixed course: {session.workout.race.distanceKm} km ·{" "}
+              {session.workout.race.terrain} · estimated{" "}
+              {session.workout.race.expectedMinutes} min for the course. Warm-up
+              and cool-down are separate. Race effort uses Garmin target “No
+              Target”; copy the RPE instruction into the step notes. The
+              calendar does not certify race readiness.
+            </p>
+          )}
           <PlanSteps steps={session.workout.steps} />
           <CopyWorkoutButton workout={session.workout} />
         </>

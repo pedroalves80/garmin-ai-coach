@@ -114,8 +114,25 @@ export function validateDaySessions(
   dayOffset: number,
   sessions: TrainingSession[],
   easyPace: number,
+  authorisedRace?: import("./types/commitments").RaceEvent,
 ) {
-  if (dayOffset === 6 && sessions.length)
+  if (
+    dayOffset === 6 &&
+    sessions.length &&
+    !(
+      authorisedRace &&
+      authorisedRace.status !== "cancelled" &&
+      new Date(`${authorisedRace.day}T12:00:00Z`).getUTCDay() === 0 &&
+      sessions.every(
+        (s) =>
+          s.sport === "running" &&
+          s.workout.type === "race" &&
+          s.workout.race?.id === authorisedRace.id &&
+          s.workout.race.day === authorisedRace.day &&
+          s.slot === "event",
+      )
+    )
+  )
     throw new ScheduleRuleError("Sunday is always a rest day.");
   if (
     sessions.length > MAX_DAILY_WORKOUTS ||
@@ -138,7 +155,18 @@ export function validateDaySessions(
       );
     if (
       session.sport === "running" &&
-      (session.slot !== "lunch" || session.workout.dayOffset !== dayOffset)
+      ((session.slot !== "lunch" &&
+        !(
+          session.slot === "event" &&
+          !!authorisedRace &&
+          authorisedRace.status !== "cancelled" &&
+          (new Date(`${authorisedRace.day}T12:00:00Z`).getUTCDay() + 6) % 7 ===
+            dayOffset &&
+          session.workout.type === "race" &&
+          session.workout.race?.day === authorisedRace.day &&
+          session.workout.race?.id === authorisedRace.id
+        )) ||
+        session.workout.dayOffset !== dayOffset)
     )
       throw new ScheduleRuleError(
         "Runs use the lunch slot on their selected day.",
@@ -179,7 +207,10 @@ export function buildWeekSchedule(
       const day = dayOffsetDate(plan.start, offset),
         warnings: string[] = [];
       let sessions: TrainingSession[] = [];
-      if (offset !== 6) {
+      if (
+        offset !== 6 &&
+        !(plan.targetKm === 0 && plan.workouts.length === 0)
+      ) {
         const run = plan.workouts.find((w) => w.dayOffset === offset);
         if (run)
           sessions.push({ sport: "running", slot: "lunch", workout: run });

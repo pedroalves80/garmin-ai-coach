@@ -1,3 +1,5 @@
+import { CommitmentRepository } from "@/server/training/commitment-repository";
+import { calendarGate, applyCommitments } from "@/shared/commitment-calendar";
 import { NextResponse } from "next/server";
 import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
@@ -35,12 +37,12 @@ export async function POST(request: Request) {
   if (
     !parsed.success ||
     parsed.data.start < monday ||
-    parsed.data.start > shiftDay(monday, 210)
+    parsed.data.start > shiftDay(monday, 730)
   )
     return NextResponse.json(
       {
         error:
-          "Choose valid paces and a Monday from this week through the next 30 weeks.",
+          "Choose valid paces and a Monday from this week through the next two years.",
       },
       { status: 400 },
     );
@@ -94,7 +96,13 @@ export async function POST(request: Request) {
     }
     const schedule = new ScheduleRepository(db);
     const proposedReview = reviewPlannedWeek(
-      buildWeekSchedule(plan, schedule.week(start), schedule.preferences()),
+      applyCommitments(
+        buildWeekSchedule(plan, schedule.week(start), schedule.preferences()),
+        plan,
+        data.commitments,
+        data.athlete.targets,
+        data.calendarOptions,
+      ),
       plan,
       data.load,
     );
@@ -143,6 +151,9 @@ export async function POST(request: Request) {
         (plan.development?.qualityLevel ?? 0) >
           (previous.development?.qualityLevel ?? 0) ||
         faster);
+    const gate = calendarGate(data.commitments, data.today, start);
+    if (advancing && gate.blocked)
+      return NextResponse.json({ error: gate.reason }, { status: 409 });
     if (
       advancing &&
       (proposedReview.hardDays > 3 ||
@@ -183,7 +194,16 @@ export async function POST(request: Request) {
         },
         { status: 409 },
       );
-    repository.savePlan(plan);
+    db.transaction(() => {
+      repository.savePlan(plan);
+      const commitments = new CommitmentRepository(db);
+      for (const pause of commitments.all().pauses)
+        if (pause.staleWeeks?.includes(start))
+          commitments.savePause({
+            ...pause,
+            staleWeeks: pause.staleWeeks.filter((w) => w !== start),
+          });
+    })();
     return NextResponse.json({ saved: true, plannedKm: planKm(plan) });
   } catch (error) {
     return NextResponse.json(

@@ -77,10 +77,10 @@ export async function POST(request: Request) {
       if (
         mondayOf(input.start) !== input.start ||
         input.start < monday ||
-        input.start > shiftDay(monday, 210)
+        input.start > shiftDay(monday, 730)
       )
         throw new ScheduleRuleError(
-          "Choose this week or a future Monday within 30 weeks.",
+          "Choose this week or a future Monday within two years.",
         );
       if (input.action === "week")
         db.transaction(() => {

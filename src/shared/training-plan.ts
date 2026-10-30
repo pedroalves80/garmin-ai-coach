@@ -61,6 +61,8 @@ export function formatWorkoutDistance(workout: RunWorkout, easyPace: number) {
 }
 
 export function targetText(target: PlanTarget) {
+  if (target.kind === "effort")
+    return `Garmin target: none · Instructions: RPE ${target.min}–${target.max} (race effort)`;
   return target.kind === "hr"
     ? `HR ${target.min}–${target.max} bpm`
     : `Pace ${formatPace(target.min)}–${formatPace(target.max)}/km`;

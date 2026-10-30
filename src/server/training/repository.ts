@@ -27,7 +27,7 @@ export class TrainingRepository {
   plans(): TrainingPlan[] {
     const rows = this.sqlite
       .prepare(
-        "SELECT plan_json FROM training_plans ORDER BY week_start DESC LIMIT 52",
+        "SELECT plan_json FROM training_plans ORDER BY week_start DESC LIMIT 156",
       )
       .all() as { plan_json: string }[];
     return rows.map((row) => savedPlanSchema.parse(JSON.parse(row.plan_json)));

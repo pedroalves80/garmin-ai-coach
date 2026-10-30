@@ -1,10 +1,13 @@
+import { CommitmentRepository } from "./commitment-repository";
+import { returnReady } from "./commitments";
+import { calendarGate, eventOnlyPlan } from "../../shared/commitment-calendar";
 import { getDatabase } from "../db/client";
 import { GarminRepository } from "../db/garmin-repository";
 import { TrainingRepository } from "./repository";
 import { weeklyMetrics, comparableRuns, sportGroup } from "./metrics";
 import { assessProgression } from "./progression";
 import { calendarDate, mondayOf, shiftDay } from "./dates";
-import { planKm, workoutKm } from "../../shared/training-plan";
+import { workoutKm } from "../../shared/training-plan";
 import type {
   ActivityMeasurement,
   TrainingPlan,
@@ -59,7 +62,21 @@ export function trainingDashboardData(now = new Date()) {
   const checkIns = repository.checkIns();
   const today = calendarDate(now),
     monday = mondayOf(today);
+  const commitmentsRepo = new CommitmentRepository(sqlite),
+    commitments = commitmentsRepo.all();
   const currentPlan = plans.find((p) => p.start === monday) ?? null;
+  const hasCommitments =
+    commitments.races.some(
+      (r) =>
+        r.status !== "cancelled" &&
+        r.day >= monday &&
+        r.day < shiftDay(monday, 7),
+    ) ||
+    commitments.pauses.some(
+      (p) => !p.cancelled && p.start <= shiftDay(monday, 6),
+    );
+  const calendarPlan =
+    currentPlan ?? (hasCommitments ? eventOnlyPlan(monday, 375, 270) : null);
   const previewPlan =
     currentPlan ??
     [...plans]
@@ -83,8 +100,8 @@ export function trainingDashboardData(now = new Date()) {
     ) ?? null;
   const todayOverride = overrides.find((o) => o.day === today);
   const scheduleRepository = new ScheduleRepository(sqlite);
-  const calendar = currentPlan
-    ? trainingCalendar(sqlite, currentPlan, activities, now)
+  const calendar = calendarPlan
+    ? trainingCalendar(sqlite, calendarPlan, activities, now)
     : null;
   const todaySessions = calendar?.days.find((d) => d.day === today) ?? null;
   const effectiveRuns =
@@ -107,11 +124,57 @@ export function trainingDashboardData(now = new Date()) {
     now,
     lastSync,
   );
+  const gate = calendarGate(commitments, today, monday);
+  const reference = [...plans]
+    .filter((p) => shiftDay(p.start, 7) <= today)
+    .sort((a, b) => b.start.localeCompare(a.start))[0];
+  const referenceAffected =
+    !!reference &&
+    trainingCalendar(sqlite, reference, activities, now).days.some(
+      (d) => !!d.rule,
+    );
+  if (gate.blocked || referenceAffected) {
+    development.eligible = false;
+    development.reason = gate.blocked
+      ? gate.reason
+      : "Complete a normal reviewed baseline after race recovery or a break before progressing.";
+  }
+  const progression = assessProgression({
+    now,
+    plans,
+    weeks,
+    checkIns,
+    activities,
+    lastSync,
+    load,
+  });
+  if (gate.blocked || referenceAffected) {
+    progression.decision = "hold";
+    progression.reasons.unshift(development.reason);
+    progression.suggestedKm = null;
+  }
   const calendarRun = todaySessions?.sessions.find(
     (s) => s.session.sport === "running",
   )?.session;
   return {
     today,
+    commitments,
+    calendarGate: gate,
+    calendarOptions: {
+      today,
+      returnReady: returnReady(sqlite, now),
+      approvedRestDays: commitmentsRepo.restDays(),
+      longestRecentKm: Math.max(
+        0,
+        ...activities
+          .filter(
+            (a) =>
+              sportGroup(a) === "running" &&
+              calendarDate(new Date(a.startedAt)) >= shiftDay(today, -30),
+          )
+          .map((a) => (a.distanceMeters ?? 0) / 1000),
+      ),
+    },
     athlete,
     development,
     load,
@@ -152,6 +215,11 @@ export function trainingDashboardData(now = new Date()) {
         : scheduled,
     todaySessions,
     calendar,
+    reviewedCalendars: Object.fromEntries(
+      plans
+        .filter((p) => p.start >= monday)
+        .map((p) => [p.start, trainingCalendar(sqlite, p, activities, now)]),
+    ),
     previewCalendar: previewPlan
       ? trainingCalendar(sqlite, previewPlan, activities, now)
       : null,
@@ -181,7 +249,12 @@ export function trainingDashboardData(now = new Date()) {
     currentPlan,
     previewPlan,
     overrides,
-    plannedKm: currentPlan ? planKm(currentPlan) : null,
+    plannedKm: calendarPlan
+      ? effectiveRuns.reduce(
+          (n, w) => n + workoutKm(w, calendarPlan.easyPace),
+          0,
+        )
+      : null,
     completion: currentPlan
       ? workoutCompletion(
           { ...currentPlan, workouts: effectiveRuns },
@@ -189,15 +262,7 @@ export function trainingDashboardData(now = new Date()) {
           today,
         )
       : [],
-    progression: assessProgression({
-      now,
-      plans,
-      weeks,
-      checkIns,
-      activities,
-      lastSync,
-      load,
-    }),
+    progression,
   };
 }
 

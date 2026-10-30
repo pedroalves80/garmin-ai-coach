@@ -32,7 +32,7 @@ export type TrainingSession = (
   | { sport: "running"; workout: RunWorkout }
   | { sport: "cycling"; workout: CyclingWorkout }
   | { sport: "hyrox"; minutes: number; attendance: HyroxAttendance }
-) & { slot: "lunch" | "later" };
+) & { slot: "lunch" | "later" | "event" };
 export type SessionState = {
   session: TrainingSession;
   status: "planned" | "recorded" | "blocked";
@@ -43,6 +43,8 @@ export type ScheduledDay = {
   sessions: SessionState[];
   recorded: { sport: string; minutes: number; km: number }[];
   warnings: string[];
+  rule?: import("./commitments").CalendarRule;
+  race?: import("./commitments").RaceEvent;
 };
 export type ScheduleChange = { day: string; sessions: TrainingSession[] };
 export type WeekSchedule = { start: string; days: ScheduledDay[] };

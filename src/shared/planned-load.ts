@@ -9,21 +9,28 @@ export function plannedEffort(session: TrainingSession) {
       ? session.workout.effort === "recovery"
         ? 2
         : 3
-      : session.workout.type === "quality"
-        ? 6
-        : session.workout.type === "long" || session.workout.type === "strides"
-          ? 3
-          : 2;
+      : session.workout.type === "race"
+        ? session.workout.race?.priority === "goal"
+          ? 8
+          : 6
+        : session.workout.type === "quality"
+          ? 6
+          : session.workout.type === "long" ||
+              session.workout.type === "strides"
+            ? 3
+            : 2;
 }
 export function plannedMinutes(session: TrainingSession, plan: TrainingPlan) {
   return session.sport === "hyrox"
     ? session.minutes
     : session.sport === "cycling"
       ? cyclingMinutes(session.workout)
-      : session.workout.steps.reduce(
-          (n, s) => n + stepSeconds(s, plan.easyPace),
-          0,
-        ) / 60;
+      : session.workout.race
+        ? session.workout.race.expectedMinutes + (1.5 * plan.easyPace) / 60
+        : session.workout.steps.reduce(
+            (n, s) => n + stepSeconds(s, plan.easyPace),
+            0,
+          ) / 60;
 }
 export function reviewPlannedWeek(
   calendar: WeekSchedule,
@@ -47,7 +54,7 @@ export function reviewPlannedWeek(
     keyRun: d.sessions.some(
       (s) =>
         s.session.sport === "running" &&
-        ["quality", "long"].includes(s.session.workout.type),
+        ["quality", "long", "race"].includes(s.session.workout.type),
     ),
     secondary: d.sessions.some((s) => s.session.sport !== "running"),
     hardSecondary: d.sessions.some(

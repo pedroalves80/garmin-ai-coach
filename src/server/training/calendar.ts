@@ -1,3 +1,7 @@
+import { CommitmentRepository } from "./commitment-repository";
+import { AthleteRepository } from "./athlete-repository";
+import { returnReady } from "./commitments";
+import { applyCommitments } from "../../shared/commitment-calendar";
 import type Database from "better-sqlite3";
 import type {
   TrainingPlan,
@@ -30,7 +34,12 @@ export function trainingCalendar(
   const schedule = new ScheduleRepository(db),
     profile = schedule.preferences(),
     week = weekOverride ?? schedule.week(plan.start);
-  const changes: ScheduleChange[] = schedule.changes(plan.start);
+  const changes: ScheduleChange[] = schedule.changes(plan.start).map((c) => ({
+    ...c,
+    sessions: c.sessions.filter(
+      (s) => s.sport !== "running" || !s.workout.race,
+    ),
+  }));
   for (const change of changes)
     for (const session of change.sessions)
       if (session.sport === "cycling")
@@ -76,7 +85,30 @@ export function trainingCalendar(
       minutes: Math.round((a.durationSeconds ?? 0) / 60),
       km: (a.distanceMeters ?? 0) / 1000,
     }));
-  return buildWeekSchedule(plan, week, profile, changes, records);
+  const commitments = new CommitmentRepository(db);
+  return applyCommitments(
+    buildWeekSchedule(plan, week, profile, changes, records),
+    plan,
+    commitments.all(),
+    new AthleteRepository(db).profile().targets,
+    {
+      today: calendarDate(now),
+      returnReady: returnReady(db, now),
+      approvedRestDays: commitments.restDays(),
+      longestRecentKm: Math.max(
+        0,
+        ...activities
+          .filter(
+            (a) =>
+              sportGroup(a) === "running" &&
+              calendarDate(new Date(a.startedAt)) >=
+                shiftDay(calendarDate(now), -30) &&
+              Date.parse(a.startedAt) <= now.getTime(),
+          )
+          .map((a) => (a.distanceMeters ?? 0) / 1000),
+      ),
+    },
+  );
 }
 export function moveRunningDay(
   db: Database.Database,
@@ -111,7 +143,11 @@ export function moveRunningDay(
     throw new ScheduleRuleError(
       "Choose an uncompleted run and a day without another run.",
     );
-  if (run.session.sport !== "running")
+  if (
+    run.session.sport !== "running" ||
+    run.session.workout.type === "race" ||
+    target.rule
+  )
     throw new ScheduleRuleError("Run unavailable.");
   if (
     target.recorded.length +
@@ -172,6 +208,10 @@ export function trainingEvidencePlans(
   const today = calendarDate(now);
   return plans
     .filter((plan) => plan.start >= shiftDay(today, -28) && plan.start <= today)
+    .filter(
+      (plan) =>
+        !trainingCalendar(db, plan, activities, now).days.some((d) => !!d.rule),
+    )
     .map((plan) => ({
       ...plan,
       workouts: trainingCalendar(db, plan, activities, now).days.flatMap(

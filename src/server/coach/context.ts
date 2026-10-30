@@ -1,3 +1,5 @@
+import { CommitmentRepository } from "../training/commitment-repository";
+import { eventOnlyPlan, calendarGate } from "../../shared/commitment-calendar";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { GarminRepository } from "../db/garmin-repository";
@@ -21,6 +23,18 @@ import { reviewPlannedWeek } from "../../shared/planned-load";
 import { developmentReadiness } from "../training/development";
 import { MINIMUM_CYCLING_MINUTES } from "../../shared/types/schedule";
 
+function raceSummary(r: import("../../shared/types/commitments").RaceEvent) {
+  return {
+    day: r.day,
+    startTime: r.startTime,
+    distanceKm: r.distanceKm,
+    terrain: r.terrain,
+    elevationGain: r.elevationGain,
+    expectedMinutes: r.expectedMinutes,
+    priority: r.priority,
+    status: r.status,
+  };
+}
 export function coachContext(sqlite: Database.Database, now: Date) {
   const day = calendarDate(now),
     monday = mondayOf(day);
@@ -33,7 +47,17 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const checkIns = training
     .checkIns()
     .filter((c) => c.day <= day && c.day >= shiftDay(day, -6));
-  const plan = plans.find((p) => p.start === monday) ?? null;
+  const commitments = new CommitmentRepository(sqlite).all();
+  const plan =
+    plans.find((p) => p.start === monday) ??
+    (commitments.races.some(
+      (r) =>
+        r.status !== "cancelled" &&
+        r.day >= monday &&
+        r.day < shiftDay(monday, 7),
+    )
+      ? eventOnlyPlan(monday, 375, 270)
+      : null);
   const originalWorkout =
     plan?.workouts.find((w) => shiftDay(plan.start, w.dayOffset) === day) ??
     null;
@@ -78,7 +102,11 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const todayActivities = activities.filter(
     (a) => calendarDate(new Date(a.startedAt)) === day,
   );
-  const ranToday = todayActivities.some((a) => sportGroup(a) === "running");
+  const ranToday = workout?.race
+    ? (todaySchedule?.sessions.some(
+        (s) => s.session.sport === "running" && s.status === "recorded",
+      ) ?? false)
+    : todayActivities.some((a) => sportGroup(a) === "running");
   const todayCheckIn = checkIns.find((c) => c.day === day) ?? null;
   const pain = checkIns.some((c) => c.day >= shiftDay(day, -2) && c.pain > 0);
   const stale =
@@ -139,11 +167,12 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const canSchedule =
     !!plan &&
     !!todaySchedule &&
-    todaySchedule.dayOffset !== 6 &&
+    (todaySchedule.dayOffset !== 6 || !!workout?.race) &&
+    !["paused", "return_review"].includes(todaySchedule.rule?.phase ?? "") &&
     !stale &&
     !!todayCheckIn;
   const moves: Partial<Record<CoachAction, ScheduleChange[]>> = {};
-  if (canSchedule && !pain) {
+  if (canSchedule && !pain && !workout?.race) {
     const secondary = todaySchedule.sessions.find(
       (s) => s.session.sport !== "running" && s.status === "planned",
     );
@@ -212,11 +241,41 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       "Two workouts are already recorded today. Do not add or reschedule more training today.",
     );
   }
-  if (todaySchedule?.dayOffset === 6) {
-    allowed = ["follow"];
+  if (todaySchedule?.dayOffset === 6 && !workout?.race) {
+    allowed = pain ? ["rest"] : ["follow"];
     constraints.push(
-      "Sunday is always complete rest. Do not schedule any workout.",
+      "Sunday rests unless an explicit race is scheduled. Do not add ordinary training.",
     );
+  }
+  const gate = calendarGate(commitments, day, monday);
+  if (
+    ["paused", "return_review"].includes(todaySchedule?.rule?.phase ?? "") ||
+    (!plan && gate.blocked)
+  ) {
+    allowed = pain ? ["rest"] : ["follow", "rest"];
+    constraints.push(
+      gate.reason,
+      "Do not resume, add, move or substitute training during a break or pending return review.",
+    );
+  }
+  if (workout?.race) {
+    allowed =
+      pain ||
+      stale ||
+      !todayCheckIn ||
+      todayCheckIn.fatigue >= 4 ||
+      todayCheckIn.soreness >= 4
+        ? ["rest"]
+        : ranToday
+          ? ["follow"]
+          : ["follow", "rest"];
+    constraints.push(
+      "Explicit scheduled race: the course and event date are fixed. Never shorten, move, add a second run or replace it with cycling. Race registration does not prove readiness. Rest if current recovery or preparation is inadequate.",
+    );
+  }
+  if (gate.blocked) {
+    development.eligible = false;
+    development.reason = gate.reason;
   }
   constraints.push(
     "Running is the priority. Cycling never replaces a run. At most two workouts daily. Weekday lunch <=120 min; later sessions and Saturday have no availability cap. Hyrox is only Monday, Wednesday, Friday. Volume increases require a separately reviewed week.",
@@ -226,6 +285,32 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
     )
     .all(shiftDay(day, -6), day);
+  const progression = assessProgression({
+    now,
+    plans,
+    weeks,
+    checkIns: training.checkIns(),
+    activities,
+    lastSync,
+    load,
+  });
+  const prior = plans
+    .filter((p) => shiftDay(p.start, 7) <= day)
+    .sort((a, b) => b.start.localeCompare(a.start))[0];
+  if (
+    gate.blocked ||
+    (prior &&
+      trainingCalendar(sqlite, prior, activities, now).days.some(
+        (d) => !!d.rule,
+      ))
+  ) {
+    progression.decision = "hold";
+    progression.suggestedKm = null;
+    progression.reasons.unshift(
+      gate.reason ||
+        "Complete a normal reviewed baseline after race recovery or a break before increasing.",
+    );
+  }
   // Explicit allowlist: never send raw activity JSON, locations, names, notes or credentials.
   const payload = {
     day,
@@ -235,7 +320,55 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       minimumCyclingMinutes: MINIMUM_CYCLING_MINUTES,
     },
     lastSync,
-    schedule: calendar,
+    schedule: calendar
+      ? {
+          ...calendar,
+          days: calendar.days.map((d) => ({
+            ...d,
+            race: d.race ? raceSummary(d.race) : undefined,
+            sessions: d.sessions.map((s) =>
+              s.session.sport === "running" && s.session.workout.race
+                ? {
+                    ...s,
+                    session: {
+                      ...s.session,
+                      workout: {
+                        ...s.session.workout,
+                        title: "Scheduled race",
+                        race: raceSummary(s.session.workout.race),
+                      },
+                    },
+                  }
+                : s,
+            ),
+          })),
+        }
+      : null,
+    commitments: {
+      races: commitments.races
+        .filter((r) => r.status !== "cancelled" && r.day >= shiftDay(day, -14))
+        .slice(0, 12)
+        .map(raceSummary),
+      pauses: commitments.pauses
+        .filter((p) => !p.cancelled)
+        .map(
+          ({
+            start,
+            end,
+            reason,
+            resumeOn,
+            returnReviewedAt,
+            baselineReviewedAt,
+          }) => ({
+            start,
+            end,
+            reason,
+            resumeOn,
+            returnReviewedAt,
+            baselineReviewedAt,
+          }),
+        ),
+    },
     athlete: {
       goal: athlete.goal,
       targets: athlete.targets,
@@ -299,21 +432,13 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       min: athlete.targets.baseMin,
       max: athlete.targets.baseMax,
     }),
-    progression: assessProgression({
-      now,
-      plans,
-      weeks,
-      checkIns: training.checkIns(),
-      activities,
-      lastSync,
-      load,
-    }),
+    progression,
     constraints,
     allowedActions: allowed,
   };
   // The private plan fingerprint also invalidates approvals when another day is edited.
   const hash = createHash("sha256")
-    .update(JSON.stringify({ payload, plan }))
+    .update(JSON.stringify({ payload, plan, commitments }))
     .digest("hex");
   return {
     payload,

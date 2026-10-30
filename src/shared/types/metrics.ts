@@ -32,7 +32,8 @@ export type TrainingWeek = {
 
 export type PlanTarget =
   | { kind: "hr"; min: number; max: number }
-  | { kind: "pace"; min: number; max: number };
+  | { kind: "pace"; min: number; max: number }
+  | { kind: "effort"; min: number; max: number };
 
 export type PlanStep =
   | {
@@ -48,7 +49,8 @@ export type PlanStep =
 export type RunWorkout = {
   dayOffset: number;
   title: string;
-  type: "base" | "strides" | "quality" | "long" | "recovery";
+  type: "base" | "strides" | "quality" | "long" | "recovery" | "race";
+  race?: import("./commitments").RaceEvent;
   steps: PlanStep[];
 };
 

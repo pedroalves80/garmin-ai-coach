@@ -597,3 +597,32 @@ test("quality evidence follows approved moved dates while keeping the reviewed m
   assert.equal(planKm(evidence), planKm(plan));
   db.close();
 });
+
+test("a post-break recovery baseline on a cutback-numbered stage cannot unlock an old peak", () => {
+  const f = returnFixture(),
+    recovery = {
+      ...f.plans[1],
+      development: {
+        phase: "recovery" as const,
+        qualityLevel: 0,
+        reason: "Return baseline",
+        targets: DEFAULT_TARGETS,
+        reviewedAt: null,
+      },
+    };
+  const plans = [f.plans[0], recovery];
+  assert.equal(assessProgression({ ...f, plans }).suggestedKm, 24.2);
+  const next = developedPlan(
+    {
+      weekNumber: 5,
+      start: "2026-11-02",
+      targetKm: 24.2,
+      easyPace: 375,
+      tempoPace: 270,
+    },
+    DEFAULT_ATHLETE,
+    plans,
+    { eligible: false, level: 0, referenceStart: null },
+  );
+  assert.equal(next.development?.phase, "volume");
+});

@@ -21,7 +21,7 @@ export function TodayOverview({
 }) {
   const recorded = training.todayRunning.runs > 0,
     workout = training.todayWorkout,
-    rest = !!training.currentPlan && !workout;
+    rest = !!training.todaySessions && !workout;
   const health = data.health;
   const target = training.plannedKm;
   return (
@@ -98,6 +98,11 @@ export function TodayOverview({
               Your week <Icon name="arrow" />
             </Link>
           </div>
+          {training.todaySessions.rule?.notes.map((note) => (
+            <p className="inline-notice small-text" key={note}>
+              {note}
+            </p>
+          ))}
           <div className="day-sessions">
             {training.todaySessions.sessions.map((entry, i) => (
               <SessionCard
@@ -110,7 +115,8 @@ export function TodayOverview({
           </div>
           {!training.todaySessions.sessions.length && (
             <p className="muted">
-              No workouts scheduled. Sunday always stays a rest day.
+              No workouts prescribed. Sunday rests unless you explicitly
+              schedule a race.
             </p>
           )}
           {training.todaySessions.warnings.map((warning, i) => (

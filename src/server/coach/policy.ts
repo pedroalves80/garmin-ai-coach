@@ -125,7 +125,7 @@ export function scheduleProposal(
           : [],
     );
   }
-  validateDaySessions(day.dayOffset, sessions, context.plan.easyPace);
+  validateDaySessions(day.dayOffset, sessions, context.plan.easyPace, day.race);
   if (JSON.stringify(sessions) === JSON.stringify(original)) return [];
   return [{ day: day.day, sessions }];
 }

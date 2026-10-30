@@ -82,7 +82,7 @@ export class ScheduleRepository {
   weeks(): Record<string, WeekPreferences> {
     const rows = this.db
       .prepare(
-        "SELECT week_start,settings_json FROM week_preferences ORDER BY week_start DESC LIMIT 52",
+        "SELECT week_start,settings_json FROM week_preferences ORDER BY week_start DESC LIMIT 156",
       )
       .all() as { week_start: string; settings_json: string }[];
     return Object.fromEntries(

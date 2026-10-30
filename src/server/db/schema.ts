@@ -112,3 +112,14 @@ export const sessionEfforts = sqliteTable("session_efforts", {
     .default(false),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const raceEvents = sqliteTable("race_events", {
+  id: text("id").primaryKey(),
+  day: text("day").notNull(),
+  itemJson: text("item_json").notNull(),
+});
+export const trainingPauses = sqliteTable("training_pauses", {
+  id: text("id").primaryKey(),
+  start: text("start").notNull(),
+  itemJson: text("item_json").notNull(),
+});

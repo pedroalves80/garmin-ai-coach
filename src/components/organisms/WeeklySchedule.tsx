@@ -72,6 +72,7 @@ export function WeeklySchedule({
     (d) =>
       d.dayOffset < 6 &&
       d.dayOffset !== selectedDay &&
+      !d.rule &&
       d.day >= today &&
       !d.sessions.some((s) => s.session.sport === "running") &&
       !d.recorded.some((r) => r.sport === "running") &&
@@ -210,13 +211,24 @@ export function WeeklySchedule({
             </span>
             <h2 id="day-schedule-heading">
               {names[selectedDay]}
-              {selectedDay === 6 ? " · Rest" : ""}
+              {day.race && day.rule?.phase === "race"
+                ? " · Race"
+                : day.rule
+                  ? ` · ${day.rule.phase.replaceAll("_", " ")}`
+                  : selectedDay === 6
+                    ? " · Rest"
+                    : ""}
             </h2>
           </div>
           <span className="muted small-text">
             {day.sessions.length} / 2 sessions
           </span>
         </div>
+        {day.rule?.notes.map((note) => (
+          <p className="inline-notice small-text" key={note}>
+            {note}
+          </p>
+        ))}
         <div className="day-sessions">
           {day.sessions.map((entry, i) => (
             <SessionCard
@@ -251,6 +263,9 @@ export function WeeklySchedule({
         )}
         {saved &&
           run?.status === "planned" &&
+          run.session.sport === "running" &&
+          !run.session.workout.race &&
+          !day.rule &&
           day.day >= today &&
           destinations.length > 0 && (
             <details className="supporting-details">
@@ -330,8 +345,8 @@ export function WeeklySchedule({
       )}
       <p className="muted small-text">
         Running leads the week. Cycling supports it and can replace Hyrox.
-        Sunday always rests. The milestone stages are ceilings; increases still
-        require training and recovery review.
+        Sunday rests unless you explicitly schedule a race. The milestone stages
+        are ceilings; increases still require training and recovery review.
       </p>
     </>
   );

@@ -151,8 +151,8 @@ export function assessProgression(input: {
   // Missed weeks, illness reductions and a distant old peak do not establish readiness.
   if (
     reference.cutback &&
-    (reference.weekNumber % 4 === 0 ||
-      reference.development?.phase === "cutback")
+    (reference.development?.phase === "cutback" ||
+      (!reference.development && reference.weekNumber % 4 === 0))
   ) {
     const established = [...input.plans]
       .filter(
