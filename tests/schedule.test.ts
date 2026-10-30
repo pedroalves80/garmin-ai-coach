@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { migrateDatabase } from "../src/server/db/migrate";
 import { TrainingRepository } from "../src/server/training/repository";
-import { ScheduleRepository } from "../src/server/training/schedule-repository";
+import {
+  ScheduleRepository,
+  preferencesSchema,
+} from "../src/server/training/schedule-repository";
 import {
   trainingCalendar,
   moveRunningDay,
@@ -15,6 +18,7 @@ import {
   validateDaySessions,
   validateRunningSchedule,
   cyclingWorkout,
+  cyclingMinutes,
 } from "../src/shared/weekly-schedule";
 import {
   DEFAULT_PREFERENCES,
@@ -70,6 +74,104 @@ function service(
   );
 }
 
+test("cycling minimum covers recovery, endurance, settings and older stored preferences", () => {
+  const { db, repo } = fixture();
+  db.prepare(
+    "INSERT INTO training_preferences(id,settings_json) VALUES(1,?)",
+  ).run(
+    JSON.stringify({
+      ...DEFAULT_PREFERENCES,
+      ftpWatts: 205,
+      weekdayCyclingMinutes: 45,
+      saturdayCyclingMinutes: 30,
+    }),
+  );
+  const prefs = repo.preferences();
+  assert.equal(prefs.weekdayCyclingMinutes, 60);
+  assert.equal(prefs.saturdayCyclingMinutes, 60);
+  assert.equal(prefs.ftpWatts, 205);
+  assert(
+    !preferencesSchema.safeParse({ ...prefs, weekdayCyclingMinutes: 59 })
+      .success,
+  );
+  assert(
+    !preferencesSchema.safeParse({ ...prefs, saturdayCyclingMinutes: 59 })
+      .success,
+  );
+  for (const effort of ["recovery", "endurance"] as const) {
+    const ride = cyclingWorkout(prefs, effort, 30);
+    assert.equal(cyclingMinutes(ride), 60);
+    assert.deepEqual(
+      ride.steps.map((s) => s.minutes),
+      [5, 50, 5],
+    );
+    assert.equal(cyclingMinutes(cyclingWorkout(prefs, effort, 90)), 90);
+    const short = {
+      ...ride,
+      steps: ride.steps.map((s) =>
+        s.name === "Ride" ? { ...s, minutes: 49 } : s,
+      ),
+    };
+    assert.throws(
+      () =>
+        validateDaySessions(
+          1,
+          [{ sport: "cycling", slot: "later", workout: short }],
+          375,
+        ),
+      /at least 60/,
+    );
+  }
+  db.close();
+});
+test("older saved rides upgrade in the calendar and AI recovery rides use the minimum", async () => {
+  const { db, repo, plan } = fixture();
+  const base = cyclingWorkout(DEFAULT_PREFERENCES, "recovery", 60);
+  const short = {
+    ...base,
+    steps: base.steps.map((s) =>
+      s.name === "Ride" ? { ...s, minutes: 35 } : s,
+    ),
+  };
+  repo.saveChanges(
+    [
+      {
+        day: "2026-10-27",
+        sessions: [
+          {
+            sport: "running",
+            slot: "lunch",
+            workout: plan.workouts.find((w) => w.dayOffset === 1)!,
+          },
+          { sport: "cycling", slot: "later", workout: short },
+        ],
+      },
+    ],
+    null,
+  );
+  const next = trainingCalendar(db, plan, [], now).days[1];
+  const bike = next.sessions.find(
+    (s) => s.session.sport === "cycling",
+  )!.session;
+  assert(bike.sport === "cycling");
+  assert.equal(cyclingMinutes(bike.workout), 60);
+  assert.deepEqual(
+    bike.workout.steps.map((s) => [s.minPercent, s.maxPercent]),
+    short.steps.map((s) => [s.minPercent, s.maxPercent]),
+  );
+  assert.equal(next.sessions.length, 2);
+  const { review } = await service(db, "cycle").review("today");
+  const proposed = review.scheduleChanges![0].sessions.find(
+    (s) => s.sport === "cycling",
+  )!;
+  assert(proposed.sport === "cycling");
+  assert.equal(cyclingMinutes(proposed.workout), 60);
+  assert.equal(
+    coachContext(db, now).payload.workoutPreferences.minimumCyclingMinutes,
+    60,
+  );
+  db.close();
+});
 test("all Hyrox combinations preserve runs, cap two sessions and reserve Sunday", () => {
   const plan = createTrainingPlan(1, "2026-10-26");
   for (let mask = 0; mask < 8; mask++) {

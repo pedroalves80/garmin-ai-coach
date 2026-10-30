@@ -8,7 +8,11 @@ import type {
   ScheduleChange,
   ScheduledDay,
 } from "./types/schedule";
-import { MAX_DAILY_WORKOUTS, WEEKDAY_LUNCH_MINUTES } from "./types/schedule";
+import {
+  MAX_DAILY_WORKOUTS,
+  WEEKDAY_LUNCH_MINUTES,
+  MINIMUM_CYCLING_MINUTES,
+} from "./types/schedule";
 import {
   stepSeconds,
   workoutKm,
@@ -28,7 +32,7 @@ export function cyclingWorkout(
   effort: "recovery" | "endurance",
   minutes: number,
 ): CyclingWorkout {
-  const duration = Math.max(15, Math.round(minutes));
+  const duration = Math.max(MINIMUM_CYCLING_MINUTES, Math.round(minutes));
   return {
     title: effort === "recovery" ? "Recovery cycling" : "Endurance cycling",
     effort,
@@ -53,6 +57,19 @@ export function powerRange(ftp: number, min: number, max: number) {
 }
 export function cyclingMinutes(workout: CyclingWorkout) {
   return workout.steps.reduce((sum, s) => sum + s.minutes, 0);
+}
+// Preserve saved power targets and warm-up/cool-down when upgrading older rides.
+export function withCyclingMinimum(workout: CyclingWorkout): CyclingWorkout {
+  const extra = MINIMUM_CYCLING_MINUTES - cyclingMinutes(workout);
+  if (extra <= 0) return workout;
+  const main = workout.steps.findIndex((step) => step.name === "Ride");
+  if (main < 0) throw new ScheduleRuleError("Cycling needs a main ride step.");
+  return {
+    ...workout,
+    steps: workout.steps.map((step, index) =>
+      index === main ? { ...step, minutes: step.minutes + extra } : step,
+    ),
+  };
 }
 export function cyclingWorkoutText(workout: CyclingWorkout) {
   return [
@@ -135,6 +152,10 @@ export function validateDaySessions(
         : session.sport === "cycling"
           ? cyclingMinutes(session.workout)
           : session.minutes;
+    if (session.sport === "cycling" && minutes < MINIMUM_CYCLING_MINUTES)
+      throw new ScheduleRuleError(
+        "Cycling workouts must total at least 60 minutes, including warm-up and cool-down.",
+      );
     if (
       dayOffset < 5 &&
       session.slot === "lunch" &&
@@ -194,6 +215,11 @@ export function buildWeekSchedule(
           });
         const override = changes.find((c) => c.day === day);
         if (override) sessions = override.sessions;
+        sessions = sessions.map((session) =>
+          session.sport === "cycling"
+            ? { ...session, workout: withCyclingMinimum(session.workout) }
+            : session,
+        );
         validateDaySessions(offset, sessions, plan.easyPace);
       }
       const recorded = records

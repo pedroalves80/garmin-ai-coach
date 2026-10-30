@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TrainingPreferences } from "@/shared/types/schedule";
+import { MINIMUM_CYCLING_MINUTES } from "@/shared/types/schedule";
 import { Button } from "../atoms/Button";
 import { powerRange } from "@/shared/weekly-schedule";
 
@@ -73,7 +74,7 @@ export function TrainingPreferencesForm({
             id="weekday-cycle"
             type="number"
             required
-            min="15"
+            min={MINIMUM_CYCLING_MINUTES}
             max="1440"
             value={prefs.weekdayCyclingMinutes}
             onChange={(e) =>
@@ -90,7 +91,7 @@ export function TrainingPreferencesForm({
             id="saturday-cycle"
             type="number"
             required
-            min="15"
+            min={MINIMUM_CYCLING_MINUTES}
             max="1440"
             value={prefs.saturdayCyclingMinutes}
             onChange={(e) =>
@@ -105,7 +106,8 @@ export function TrainingPreferencesForm({
       <p className="muted small-text">
         Recovery: {recovery.min}–{recovery.max} W. Endurance: {endurance.min}–
         {endurance.max} W. These are conservative supporting rides. Duration
-        settings are workout defaults, not your availability limits.
+        settings are workout defaults, not your availability limits. Every ride
+        totals at least 60 minutes, including warm-up and cool-down.
       </p>
       <label className="checkbox-line">
         <input

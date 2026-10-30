@@ -46,9 +46,10 @@ export type ScheduledDay = {
 };
 export type ScheduleChange = { day: string; sessions: TrainingSession[] };
 export type WeekSchedule = { start: string; days: ScheduledDay[] };
+export const MINIMUM_CYCLING_MINUTES = 60;
 export const DEFAULT_PREFERENCES: TrainingPreferences = {
   ftpWatts: 176,
-  weekdayCyclingMinutes: 45,
+  weekdayCyclingMinutes: MINIMUM_CYCLING_MINUTES,
   saturdayCyclingMinutes: 90,
   automaticCoach: true,
 };

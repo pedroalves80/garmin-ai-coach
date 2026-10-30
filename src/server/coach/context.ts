@@ -11,6 +11,7 @@ import { minimumRunKm, workoutKm } from "../../shared/training-plan";
 import { ScheduleRepository } from "../training/schedule-repository";
 import { trainingCalendar, moveRunningDay } from "../training/calendar";
 import type { ScheduleChange } from "../../shared/types/schedule";
+import { MINIMUM_CYCLING_MINUTES } from "../../shared/types/schedule";
 
 export function coachContext(sqlite: Database.Database, now: Date) {
   const day = calendarDate(now),
@@ -177,7 +178,11 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   // Explicit allowlist: never send raw activity JSON, locations, names, notes or credentials.
   const payload = {
     day,
-    workoutPreferences: { stepTarget: "distance", minimumRunKm },
+    workoutPreferences: {
+      stepTarget: "distance",
+      minimumRunKm,
+      minimumCyclingMinutes: MINIMUM_CYCLING_MINUTES,
+    },
     lastSync,
     schedule: calendar,
     preferences: scheduleRepository.preferences(),

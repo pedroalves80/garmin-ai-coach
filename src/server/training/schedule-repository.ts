@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import {
   DEFAULT_PREFERENCES,
+  MINIMUM_CYCLING_MINUTES,
   DEFAULT_WEEK_PREFERENCES,
   type TrainingPreferences,
   type WeekPreferences,
@@ -12,11 +13,24 @@ import { dayOffsetDate } from "../../shared/weekly-schedule";
 export const preferencesSchema = z
   .object({
     ftpWatts: z.number().int().min(40).max(700),
-    weekdayCyclingMinutes: z.number().int().min(15).max(1440),
-    saturdayCyclingMinutes: z.number().int().min(15).max(1440),
+    weekdayCyclingMinutes: z
+      .number()
+      .int()
+      .min(MINIMUM_CYCLING_MINUTES)
+      .max(1440),
+    saturdayCyclingMinutes: z
+      .number()
+      .int()
+      .min(MINIMUM_CYCLING_MINUTES)
+      .max(1440),
     automaticCoach: z.boolean(),
   })
   .strict();
+// Older installations allowed shorter rides; retain all other saved preferences.
+const storedPreferencesSchema = preferencesSchema.extend({
+  weekdayCyclingMinutes: z.number().int().min(15).max(1440),
+  saturdayCyclingMinutes: z.number().int().min(15).max(1440),
+});
 const attendance = z.enum(["going", "skipping", "undecided"]);
 export const weekPreferencesSchema = z
   .object({
@@ -36,9 +50,19 @@ export class ScheduleRepository {
     const row = this.db
       .prepare("SELECT settings_json FROM training_preferences WHERE id=1")
       .get() as { settings_json: string } | undefined;
-    return row
-      ? preferencesSchema.parse(JSON.parse(row.settings_json))
-      : { ...DEFAULT_PREFERENCES };
+    if (!row) return { ...DEFAULT_PREFERENCES };
+    const saved = storedPreferencesSchema.parse(JSON.parse(row.settings_json));
+    return {
+      ...saved,
+      weekdayCyclingMinutes: Math.max(
+        MINIMUM_CYCLING_MINUTES,
+        saved.weekdayCyclingMinutes,
+      ),
+      saturdayCyclingMinutes: Math.max(
+        MINIMUM_CYCLING_MINUTES,
+        saved.saturdayCyclingMinutes,
+      ),
+    };
   }
   savePreferences(preferences: TrainingPreferences) {
     this.db
