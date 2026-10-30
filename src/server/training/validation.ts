@@ -14,7 +14,7 @@ export const checkInSchema = z
 export const planSettingsSchema = z
   .object({
     weekNumber: z.number().int().min(1).max(30),
-    targetKm: z.number().min(20).max(80).optional(),
+    targetKm: z.number().min(20).max(80).multipleOf(0.01).optional(),
     start: z.iso
       .date()
       .refine(

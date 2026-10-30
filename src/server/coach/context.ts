@@ -7,6 +7,7 @@ import { weeklyMetrics, comparableRuns, sportGroup } from "../training/metrics";
 import { assessProgression } from "../training/progression";
 import type { CoachAction, CoachKind } from "../../shared/types/coach";
 import type { RunWorkout } from "../../shared/types/metrics";
+import { minimumRunKm, workoutKm } from "../../shared/training-plan";
 
 export function coachContext(sqlite: Database.Database, now: Date) {
   const day = calendarDate(now),
@@ -72,6 +73,17 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       "High fatigue or soreness: reduce today's run or rest; no quality work.",
     );
   }
+  if (workout && plan) {
+    const km = workoutKm(workout, plan.easyPace);
+    if (km <= minimumRunKm + 1e-8 && allowed.includes("shorten")) {
+      allowed = allowed.filter((action) => action !== "shorten");
+      constraints.push(
+        "This run is already at the 5 km minimum. Choose rest rather than shortening it below that distance.",
+      );
+    }
+    if (km < minimumRunKm - 1e-8)
+      allowed = allowed.filter((action) => action !== "easy");
+  }
   const health = sqlite
     .prepare(
       "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
@@ -80,6 +92,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   // Explicit allowlist: never send raw activity JSON, locations, names, notes or credentials.
   const payload = {
     day,
+    workoutPreferences: { stepTarget: "distance", minimumRunKm },
     lastSync,
     schedule:
       "Mon run + Hyrox; Tue run + cycling; Wed Hyrox; Thu run + cycling; Fri optional Hyrox; Sat long run + cycling; Sun rest. Saved plans may add runs at later stages.",

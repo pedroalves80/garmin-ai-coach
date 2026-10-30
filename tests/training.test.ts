@@ -8,6 +8,8 @@ import {
   stepSeconds,
   volumeMilestones,
   garminWorkoutText,
+  isDistanceWorkout,
+  amountText,
 } from "../src/shared/training-plan";
 import {
   weeklyMetrics,
@@ -26,6 +28,7 @@ import { authorizeMutation } from "../src/server/security/authorize";
 import type {
   ActivityMeasurement,
   DailyCheckIn,
+  PlanStep,
 } from "../src/shared/types/metrics";
 
 function activity(
@@ -52,7 +55,7 @@ function activity(
     }),
   };
 }
-test("all 30 plan totals come from nested steps and stay consistent when planning pace changes", () => {
+test("all 30 plans use exact distance steps, with at least 5 km per run at every pace", () => {
   for (let stage = 1; stage <= 30; stage++)
     for (const easy of [300, 375, 480]) {
       const p = createTrainingPlan(stage, "2026-10-26", easy, 270);
@@ -68,6 +71,11 @@ test("all 30 plan totals come from nested steps and stay consistent when plannin
       assert(
         p.workouts.every((w) => w.steps.every((s) => stepMeters(s, easy) > 0)),
       );
+      assert(
+        p.workouts.every(
+          (w) => isDistanceWorkout(w) && workoutDistance(w.steps) >= 5000,
+        ),
+      );
       assert.equal(
         p.workouts.length,
         volumeMilestones[stage - 1] < 40
@@ -81,14 +89,19 @@ test("all 30 plan totals come from nested steps and stay consistent when plannin
     (w) => w.type === "strides",
   )!;
   const repeat = strides.steps.find((s) => s.kind === "repeat")!;
-  assert.equal(stepSeconds(repeat, 375), 720);
-  assert(
-    Math.abs(stepMeters(repeat, 375) - 6 * (20 / 255 + 100 / 412.5) * 1000) <
-      0.001,
-  );
+  assert.equal(stepMeters(repeat, 375), 1980);
+  assert.equal(stepMeters(repeat, 300), 1980);
   const text = garminWorkoutText(strides);
   assert(text.includes("Repeat 6 times"));
-  assert(text.includes("Recover — 1:40 — Pace 6:15–7:30/km"));
+  assert(text.includes("Recover — 0.25 km — Pace 6:15–7:30/km"));
+  assert(text.includes("Run — 0.08 km — Pace 4:00–4:30/km"));
+  const monday = createTrainingPlan(1, "2026-10-26").workouts[0];
+  assert.equal(workoutDistance(monday.steps), 5000);
+  assert(garminWorkoutText(monday).includes("Run — 4.00 km"));
+  assert.notEqual(
+    monday.steps.reduce((sum, s) => sum + stepSeconds(s, 300), 0),
+    monday.steps.reduce((sum, s) => sum + stepSeconds(s, 480), 0),
+  );
   assert.throws(() => createTrainingPlan(31, "2026-10-26"), /Invalid/);
   const adjusted = createTrainingPlan(2, "2026-11-02", 375, 270, 26.3);
   assert(Math.abs(planKm(adjusted) - 26.3) < 0.000001);
@@ -96,6 +109,82 @@ test("all 30 plan totals come from nested steps and stay consistent when plannin
     () => createTrainingPlan(1, "2026-11-02", 375, 270, 80),
     /Reviewed volume/,
   );
+});
+
+function workoutDistance(steps: PlanStep[]): number {
+  return steps.reduce(
+    (sum, s) =>
+      sum +
+      (s.kind === "repeat"
+        ? s.times * workoutDistance(s.steps)
+        : s.amount.kind === "distance"
+          ? s.amount.meters
+          : NaN),
+    0,
+  );
+}
+test("pace settings change intensity but never the distance or structure of a new workout", () => {
+  const slow = createTrainingPlan(1, "2026-11-02", 600, 420);
+  const fast = createTrainingPlan(1, "2026-11-02", 240, 180);
+  const withoutTargets = (plan: typeof slow) =>
+    JSON.stringify(plan.workouts, (key, value) =>
+      key === "target" ? undefined : value,
+    );
+  assert.equal(withoutTargets(slow), withoutTargets(fast));
+});
+test("all supported reviewed volumes preserve their weekly total and the minimum after rounding", () => {
+  for (let stage = 1; stage <= 30; stage++) {
+    for (
+      let tenths = 200;
+      tenths <= volumeMilestones[stage - 1] * 10;
+      tenths++
+    ) {
+      const target = tenths / 10,
+        plan = createTrainingPlan(stage, "2026-11-02", 375, 270, target);
+      assert(Math.abs(planKm(plan) - target) < 1e-8);
+      for (const workout of plan.workouts)
+        assert(workoutDistance(workout.steps) >= 5000);
+    }
+  }
+  for (const target of [
+    20, 20.01, 22.49, 22.5, 39.99, 40, 59.99, 60, 79.99, 80,
+  ]) {
+    const plan = createTrainingPlan(30, "2026-11-02", 600, 420, target);
+    assert(Math.abs(planKm(plan) - target) < 1e-8);
+    const check = (steps: PlanStep[]) => {
+      for (const step of steps)
+        if (step.kind === "repeat") check(step.steps);
+        else {
+          assert(step.amount.kind === "distance");
+          assert(
+            Number.isInteger(step.amount.meters) &&
+              step.amount.meters % 10 === 0,
+          );
+          assert.equal(
+            Math.round(Number(amountText(step).split(" ")[0]) * 1000),
+            step.amount.meters,
+          );
+        }
+    };
+    for (const w of plan.workouts) {
+      assert(workoutDistance(w.steps) >= 5000);
+      check(w.steps);
+    }
+  }
+  const minimum = createTrainingPlan(1, "2026-11-02", 375, 270, 20);
+  assert.deepEqual(
+    minimum.workouts.map((w) => workoutDistance(w.steps)),
+    [5000, 5000, 5000, 5000],
+  );
+  assert.throws(
+    () => createTrainingPlan(1, "2026-11-02", 375, 270, 19.9),
+    /Reviewed volume/,
+  );
+  assert.throws(
+    () => createTrainingPlan(1, "2026-11-02", 375, 270, 20.001),
+    /0.01 km/,
+  );
+  assert.throws(() => createTrainingPlan(1, "2026-11-02", NaN), /Invalid/);
 });
 
 test("calendar weeks, sport classification and wellness separation include zero weeks", () => {
@@ -196,6 +285,14 @@ test("check-ins upsert once per day and saved plan snapshots retain reviewed ste
     assert.equal(planKm(repo.plans()[0]), planKm(plan));
     repo.savePlan(plan);
     assert.equal(repo.plans().length, 1);
+    const legacy = createTrainingPlan(1, "2026-10-19");
+    const run = legacy.workouts[0].steps[1];
+    assert(run.kind === "step");
+    run.amount = { kind: "time", seconds: 1500 };
+    repo.savePlan(legacy);
+    const stored = repo.plans().find((p) => p.start === legacy.start)!;
+    assert.deepEqual(stored.workouts[0].steps[1], run);
+    assert(!isDistanceWorkout(stored.workouts[0]));
   } finally {
     db.close();
   }
@@ -204,8 +301,8 @@ test("check-ins upsert once per day and saved plan snapshots retain reviewed ste
 test("distance completion groups runs by date and does not mark partial or future sessions complete", () => {
   const plan = createTrainingPlan(1, "2026-10-26");
   const rows = [
-    activity("one", "2026-10-26", 2),
-    activity("two", "2026-10-26", 2),
+    activity("one", "2026-10-26", 2.5),
+    activity("two", "2026-10-26", 2.5),
     activity("partial", "2026-10-27", 1),
   ];
   const completion = workoutCompletion(plan, rows, "2026-10-29");

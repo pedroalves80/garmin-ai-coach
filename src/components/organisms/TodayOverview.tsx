@@ -4,7 +4,11 @@ import type { TrainingDashboardData } from "@/server/training/dashboard";
 import { MetricCard } from "@/components/molecules/MetricCard";
 import { Icon } from "@/components/atoms/Icon";
 import { RecoveryCheckIn } from "./RecoveryCheckIn";
-import { workoutKm, defaultEasyPace } from "@/shared/training-plan";
+import {
+  formatWorkoutDistance,
+  defaultEasyPace,
+  isDistanceWorkout,
+} from "@/shared/training-plan";
 
 export function TodayOverview({
   data,
@@ -45,7 +49,7 @@ export function TodayOverview({
             {recorded
               ? `${Math.round(training.todayRunning.minutes)} minutes of running synced today. Take a moment to check in with your recovery.`
               : workout
-                ? `Your saved workout is ready. ≈${workoutKm(workout, training.currentPlan?.easyPace ?? defaultEasyPace).toFixed(1)} km, with the steps laid out for Garmin.`
+                ? `Your saved workout is ready. ${formatWorkoutDistance(workout, training.currentPlan?.easyPace ?? defaultEasyPace)}, with the steps laid out for Garmin.`
                 : rest
                   ? "No run is scheduled today. Check in with your recovery and follow your other planned training."
                   : "Review your starting week, then build from the training you actually complete."}
@@ -120,7 +124,7 @@ export function TodayOverview({
               <span className="muted">
                 {target === null
                   ? "No saved distance target"
-                  : `of ≈${target.toFixed(1)} km planned`}
+                  : `of ${training.currentPlan?.workouts.every(isDistanceWorkout) ? "" : "≈"}${target.toFixed(1)} km planned`}
               </span>
             </div>
             {target !== null && training.synced && (

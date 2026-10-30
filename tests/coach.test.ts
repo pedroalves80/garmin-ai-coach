@@ -76,10 +76,14 @@ test("daily proposals never add distance or speed; weekly reviews cannot change 
       name: "Run",
       amount: {
         kind: "distance",
-        meters: Math.floor(
-          workoutKm(proposal.before, 375) *
-            1000 *
-            (action === "shorten" ? 0.8 : 1),
+        meters: Math.max(
+          5000,
+          Math.floor(
+            (workoutKm(proposal.before, 375) *
+              1000 *
+              (action === "shorten" ? 0.8 : 1)) /
+              10,
+          ) * 10,
         ),
       },
       target: { kind: "hr", min: 125, max: 140 },
@@ -112,6 +116,30 @@ test("recent pain forces rest; high fatigue permits only reduction or rest", () 
   assert.deepEqual(pain.allowed, ["rest"]);
   assert.throws(() => workoutProposal(pain, "today", "easy"), /conflicts/);
   assert.equal(workoutProposal(pain, "today", "rest")!.after, null);
+  db.close();
+});
+
+test("coach reductions respect 5 km and offer rest when the run cannot be shortened", () => {
+  const { db, training } = fixture();
+  training.savePlan(createTrainingPlan(1, "2026-10-26", 375, 270, 22.5));
+  const reduced = workoutProposal(coachContext(db, now), "today", "shorten")!;
+  assert.equal(workoutKm(reduced.after!, 375), 5);
+  assert(workoutKm(reduced.after!, 375) < workoutKm(reduced.before, 375));
+  training.savePlan(createTrainingPlan(1, "2026-10-26", 375, 270, 20));
+  training.saveCheckIn({
+    day: "2026-10-29",
+    fatigue: 4,
+    soreness: 2,
+    pain: 0,
+    notes: "",
+  });
+  const context = coachContext(db, now);
+  assert.deepEqual(context.allowed, ["rest"]);
+  assert.throws(
+    () => workoutProposal(context, "today", "shorten"),
+    /conflicts/,
+  );
+  assert.equal(workoutProposal(context, "today", "rest")!.after, null);
   db.close();
 });
 

@@ -6,7 +6,7 @@ import type { CoachReview } from "@/shared/types/coach";
 
 const labels = {
   follow: "Keep the schedule",
-  shorten: "Reduce to 80% distance · HR 125–140 bpm",
+  shorten: "Reduce distance · minimum 5 km · HR 125–140 bpm",
   easy: "Replace with HR 125–140 bpm",
   rest: "Rest from running",
 };

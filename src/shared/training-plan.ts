@@ -11,6 +11,53 @@ export const volumeMilestones = [
 ];
 export const defaultEasyPace = 375;
 export const defaultTempoPace = 270;
+export const minimumRunKm = 5;
+
+// Constrain the weighted split before rounding, preserving the reviewed total.
+function allocateDistances(total: number, weights: number[]): number[] {
+  const minimum = minimumRunKm * 1000;
+  if (total < weights.length * minimum)
+    throw new Error("Weekly distance cannot support 5 km per run");
+  const distances = weights.map(() => 0);
+  let active = weights.map((_, i) => i),
+    remaining = total;
+  while (active.length) {
+    const weight = active.reduce((sum, i) => sum + weights[i], 0);
+    const below = active.filter(
+      (i) => (remaining * weights[i]) / weight < minimum,
+    );
+    if (!below.length) {
+      for (const i of active) distances[i] = (remaining * weights[i]) / weight;
+      break;
+    }
+    for (const i of below) {
+      distances[i] = minimum;
+      remaining -= minimum;
+    }
+    active = active.filter((i) => !below.includes(i));
+  }
+  const rounded = distances.map((m) => Math.floor((m + 1e-7) / 10) * 10);
+  const order = distances
+    .map((m, i) => ({ i, remainder: m - rounded[i] }))
+    .sort((a, b) => b.remainder - a.remainder || a.i - b.i);
+  const extra = Math.round((total - rounded.reduce((s, m) => s + m, 0)) / 10);
+  for (let i = 0; i < extra; i++) rounded[order[i % order.length].i] += 10;
+  return rounded;
+}
+
+export function isDistanceWorkout(workout: RunWorkout) {
+  const distanceOnly = (steps: PlanStep[]): boolean =>
+    steps.every((s) =>
+      s.kind === "repeat"
+        ? distanceOnly(s.steps)
+        : s.amount.kind === "distance",
+    );
+  return distanceOnly(workout.steps);
+}
+
+export function formatWorkoutDistance(workout: RunWorkout, easyPace: number) {
+  return `${isDistanceWorkout(workout) ? "" : "≈"}${workoutKm(workout, easyPace).toFixed(2)} km`;
+}
 
 export function targetText(target: PlanTarget) {
   return target.kind === "hr"
@@ -86,6 +133,8 @@ export function createTrainingPlan(
     !Number.isInteger(weekNumber) ||
     weekNumber < 1 ||
     weekNumber > 30 ||
+    !Number.isFinite(easyPace) ||
+    !Number.isFinite(tempoPace) ||
     easyPace < 240 ||
     easyPace > 600 ||
     tempoPace < 180 ||
@@ -101,6 +150,8 @@ export function createTrainingPlan(
     throw new Error(
       "Reviewed volume must be between 20 km and the selected milestone",
     );
+  if (Math.abs(volume * 100 - Math.round(volume * 100)) > 1e-6)
+    throw new Error("Use weekly volume in increments of 0.01 km");
   const cutback =
     weekNumber % 4 === 0 || volume < volumeMilestones[weekNumber - 1] * 0.9;
   const allocation =
@@ -127,13 +178,12 @@ export function createTrainingPlan(
             [4, 0.12],
             [5, 0.27],
           ];
-  let allocated = 0;
-  const workouts = allocation.map(([dayOffset, weight], i): RunWorkout => {
-    const meters =
-      i === allocation.length - 1
-        ? volume * 1000 - allocated
-        : Math.round(volume * weight * 10) * 100;
-    allocated += meters;
+  const distances = allocateDistances(
+    Math.round(volume * 1000),
+    allocation.map(([, weight]) => weight),
+  );
+  const workouts = allocation.map(([dayOffset], i): RunWorkout => {
+    const meters = distances[i];
     let type: RunWorkout["type"] =
       dayOffset === 5
         ? "long"
@@ -162,7 +212,7 @@ export function createTrainingPlan(
                 {
                   kind: "step",
                   name: "Run",
-                  amount: { kind: "time", seconds: 360 },
+                  amount: { kind: "distance", meters: 1300 },
                   target: {
                     kind: "pace",
                     min: tempoPace - 5,
@@ -172,7 +222,7 @@ export function createTrainingPlan(
                 {
                   kind: "step",
                   name: "Recover",
-                  amount: { kind: "time", seconds: 120 },
+                  amount: { kind: "distance", meters: 300 },
                   target: { kind: "pace", min: 375, max: 450 },
                 },
               ],
@@ -187,13 +237,13 @@ export function createTrainingPlan(
                   {
                     kind: "step",
                     name: "Run",
-                    amount: { kind: "time", seconds: 20 },
+                    amount: { kind: "distance", meters: 80 },
                     target: { kind: "pace", min: 240, max: 270 },
                   },
                   {
                     kind: "step",
                     name: "Recover",
-                    amount: { kind: "time", seconds: 100 },
+                    amount: { kind: "distance", meters: 250 },
                     target: { kind: "pace", min: 375, max: 450 },
                   },
                 ],
@@ -213,9 +263,9 @@ export function createTrainingPlan(
       type,
       title:
         type === "quality"
-          ? "Tempo · 2 × 6 min"
+          ? "Tempo · 2 × 1.30 km"
           : type === "strides"
-            ? "Base + 6 × 20 sec strides"
+            ? "Base + 6 × 0.08 km strides"
             : type === "long"
               ? "Long base run"
               : recovery

@@ -1,6 +1,6 @@
 import type { CoachAction, CoachKind } from "../../shared/types/coach";
 import type { RunWorkout } from "../../shared/types/metrics";
-import { workoutKm } from "../../shared/training-plan";
+import { workoutKm, minimumRunKm } from "../../shared/training-plan";
 import type { CoachData } from "./context";
 import { allowedActions } from "./context";
 
@@ -24,10 +24,14 @@ export function workoutProposal(
   const before = context.workout;
   let after: RunWorkout | null = null;
   if (action !== "rest") {
-    const meters = Math.floor(
-      workoutKm(before, context.plan.easyPace) *
-        1000 *
-        (action === "shorten" ? 0.8 : 1),
+    const meters = Math.max(
+      minimumRunKm * 1000,
+      Math.floor(
+        (workoutKm(before, context.plan.easyPace) *
+          1000 *
+          (action === "shorten" ? 0.8 : 1)) /
+          10,
+      ) * 10,
     );
     after = {
       dayOffset: before.dayOffset,

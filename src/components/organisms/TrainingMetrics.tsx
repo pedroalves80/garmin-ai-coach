@@ -1,7 +1,7 @@
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import { MetricCard } from "@/components/molecules/MetricCard";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
-import { formatPace } from "@/shared/training-plan";
+import { formatPace, isDistanceWorkout } from "@/shared/training-plan";
 
 export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
   const current = data.weeks.at(-1)!;
@@ -36,7 +36,7 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
           value={
             data.plannedKm === null
               ? "Draft"
-              : `≈${data.plannedKm.toFixed(1)} km`
+              : `${data.currentPlan?.workouts.every(isDistanceWorkout) ? "" : "≈"}${data.plannedKm.toFixed(1)} km`
           }
           detail={
             data.plannedKm === null

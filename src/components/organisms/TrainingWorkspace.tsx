@@ -9,7 +9,8 @@ import {
   defaultTempoPace,
   formatPace,
   planKm,
-  stepSeconds,
+  minimumRunKm,
+  formatWorkoutDistance,
   volumeMilestones,
   workoutKm,
 } from "@/shared/training-plan";
@@ -39,6 +40,27 @@ function settingsKey(
 ) {
   return [start, week, km, easy, tempo].join("|");
 }
+function matchesGeneratedWeek(
+  plan: NonNullable<TrainingDashboardData["previewPlan"]>,
+) {
+  try {
+    const generated = createTrainingPlan(
+      plan.weekNumber,
+      plan.start,
+      plan.easyPace,
+      plan.tempoPace,
+      plan.targetKm,
+    );
+    return (
+      plan.workouts.length === generated.workouts.length &&
+      plan.workouts.every((w) =>
+        generated.workouts.some((next) => sameWorkout(w, next)),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 const names = [
   "Monday",
   "Tuesday",
@@ -55,9 +77,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   const [week, setWeek] = useState(initial?.weekNumber ?? 1),
     [start, setStart] = useState(initial?.start ?? offset(data.monday, 7)),
     [targetKm, setTargetKm] = useState(String(initial?.targetKm ?? 25));
-  const [easy, setEasy] = useState(
-      formatPace(initial?.easyPace ?? defaultEasyPace),
-    ),
+  const [easy] = useState(formatPace(initial?.easyPace ?? defaultEasyPace)),
     [tempo, setTempo] = useState(
       formatPace(initial?.tempoPace ?? defaultTempoPace),
     );
@@ -73,7 +93,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
     [message, setMessage] = useState(""),
     [failed, setFailed] = useState(false);
   const [savedKey, setSavedKey] = useState(
-    initial
+    initial && matchesGeneratedWeek(initial)
       ? settingsKey(
           initial.start,
           initial.weekNumber,
@@ -122,6 +142,16 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
 
   return (
     <section className="screen-stack" aria-label="Weekly running planner">
+      {initial &&
+        initial.start === start &&
+        initial.weekNumber === week &&
+        !matchesGeneratedWeek(initial) &&
+        !saved && (
+          <p className="inline-notice small-text">
+            This is an updated distance-based draft. Review and save the week to
+            apply it to the stored schedule.
+          </p>
+        )}
       <form
         className="surface plan-summary"
         onSubmit={async (e) => {
@@ -194,7 +224,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         </div>
         <div className="plan-totals">
           <strong>
-            {preview ? `≈${planKm(preview).toFixed(1)}` : "—"}
+            {preview ? planKm(preview).toFixed(1) : "—"}
             <span>km planned</span>
           </strong>
           <strong>
@@ -260,16 +290,6 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
                 onChange={(e) => setStart(e.target.value)}
               />
             </label>
-            <label htmlFor="easy-estimate">
-              Planning pace for HR steps
-              <input
-                id="easy-estimate"
-                value={easy}
-                required
-                pattern="[0-9]{1,2}:[0-5][0-9]"
-                onChange={(e) => setEasy(e.target.value)}
-              />
-            </label>
             <label htmlFor="tempo-pace">
               Tempo working pace · min:sec/km
               <input
@@ -281,21 +301,22 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
               />
             </label>
             <p className="muted small-text editor-note">
-              The planning pace estimates HR-step duration. An increase needs a
-              completed baseline and recovery check-ins; milestones stay drafts
-              until reviewed.
+              Every step uses distance, with at least 5 km per run including
+              warm-up and cool-down. Tempo pace sets intensity. Volume increases
+              still need a completed baseline and recovery check-ins.
             </p>
           </div>
         </details>
         {!preview && (
           <p role="alert" className="error-text">
-            Check the settings: planning pace 4:00–10:00/km, tempo 3:00–7:00/km,
-            and volume from 20 km up to the selected milestone.
+            Choose a valid date, tempo pace of 3:00–7:00/km, and volume from 20
+            km up to the selected milestone in 0.01 km increments.
           </p>
         )}
         <div className="plan-save-row">
           <p className="muted small-text">
-            Distances include every step. Time-based distances are estimates.
+            All steps use distance. Every run totals at least {minimumRunKm} km,
+            including warm-up and cool-down.
           </p>
           <Button disabled={pending || !preview} type="submit">
             {pending ? "Saving…" : "Save reviewed week"}
@@ -375,19 +396,9 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
               <>
                 <div className="workout-meta">
                   <span>
-                    ≈{workoutKm(workout, preview.easyPace).toFixed(1)} km
+                    {formatWorkoutDistance(workout, preview.easyPace)} total
                   </span>
-                  <span>
-                    ≈
-                    {Math.round(
-                      workout.steps.reduce(
-                        (sum, s) => sum + stepSeconds(s, preview.easyPace),
-                        0,
-                      ) / 60,
-                    )}{" "}
-                    min
-                  </span>
-                  <span>Garmin-ready steps</span>
+                  <span>Distance targets for Garmin</span>
                 </div>
                 <PlanSteps steps={workout.steps} />
                 <CopyWorkoutButton workout={workout} />
