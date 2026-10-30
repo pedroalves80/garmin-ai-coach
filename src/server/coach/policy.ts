@@ -54,7 +54,11 @@ export function workoutProposal(
           kind: "step",
           name: "Run",
           amount: { kind: "distance", meters },
-          target: { kind: "hr", min: 125, max: 140 },
+          target: {
+            kind: "hr",
+            min: context.athlete.targets.recoveryMin,
+            max: context.athlete.targets.recoveryMax,
+          },
         },
       ],
     };

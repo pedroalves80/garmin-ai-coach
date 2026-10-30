@@ -110,8 +110,33 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
           </details>
         </section>
       </div>
+      <section className="surface">
+        <h3>Combined session effort</h3>
+        {data.load.weeks.map((week) => (
+          <p className="muted small-text" key={week.start}>
+            {week.start}
+            {week.partial ? " · so far" : ""} · {week.measuredAu} rated AU ·{" "}
+            {Math.round(week.coverage * 100)}% duration rated · {week.hardDays}{" "}
+            demanding days
+            {week.unknownSessions
+              ? ` · ${week.unknownSessions} unknown sessions`
+              : ""}
+          </p>
+        ))}
+        <p className="muted small-text">
+          AU = minutes × overall session RPE. Unknown effort is not treated as
+          low load. The weekly review considers recovery and hard days; these
+          are coaching flags, not injury predictions.
+        </p>
+      </section>
       <section className="surface comparison-panel">
         <h3>Similar-run pace / HR observations</h3>
+        <p className="muted small-text">
+          Periodically repeat the same familiar, flat route within your reviewed
+          base HR range, under similar conditions. Compare pace and effort over
+          several runs. Review targets in Settings when the six-week review is
+          due; the app does not lower your HR target automatically.
+        </p>
         {comparison.secondsPerKmChange === null ? (
           <p className="muted">
             {comparison.pairs} matched pairs found; at least 3 are needed before
@@ -135,11 +160,12 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
           <summary>How similar runs are compared</summary>
           <p className="muted small-text">
             Last 28 days versus the preceding 28. Outdoor road runs only,
-            average HR 135–150 bpm and within 3 bpm between runs, distance
-            within 10%, starting area within 250 m and ascent per km within 5 m.
-            Temperature difference is limited to 5°C where present. Starting
-            area is not proof of the same route; wind, effort and stops are not
-            controlled.{" "}
+            average HR {data.athlete.targets.baseMin}–
+            {data.athlete.targets.baseMax} bpm and within 3 bpm between runs,
+            distance within 10%, starting area within 250 m and ascent per km
+            within 5 m. Temperature difference is limited to 5°C where present.
+            Starting area is not proof of the same route; wind, effort and stops
+            are not controlled.{" "}
             {comparison.weatherMissing
               ? "Some temperature data is missing. "
               : ""}

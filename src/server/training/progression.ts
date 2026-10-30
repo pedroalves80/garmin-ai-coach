@@ -11,6 +11,7 @@ import {
   volumeMilestones,
 } from "../../shared/training-plan";
 import { calendarDate, shiftDay } from "./dates";
+import type { combinedLoadReview } from "./load";
 import { sportGroup } from "./metrics";
 
 export function assessProgression(input: {
@@ -20,6 +21,7 @@ export function assessProgression(input: {
   checkIns: DailyCheckIn[];
   activities: ActivityMeasurement[];
   lastSync: string | null;
+  load?: ReturnType<typeof combinedLoadReview>;
 }): ProgressionDecision {
   const today = calendarDate(input.now);
   const recent = input.checkIns.filter(
@@ -102,12 +104,24 @@ export function assessProgression(input: {
       "hold",
       "Cycling, Hyrox or other training time rose substantially. Hold running volume while reviewing the combined workload.",
     );
+  if (input.load && !input.load.cleared)
+    return result("hold", input.load.reasons[0]);
   const nextMilestone = volumeMilestones[Math.min(reference.weekNumber, 29)];
-  if (nextMilestone < km!)
+  if ((reference.weekNumber + 1) % 4 === 0 && nextMilestone < km!)
     return result(
       "reduce",
       "The next stage is a scheduled cutback. Review a lighter week before building again.",
-      nextMilestone,
+      Math.max(
+        20,
+        Math.min(
+          nextMilestone,
+          Math.round(
+            km! *
+              (nextMilestone / volumeMilestones[reference.weekNumber - 1]) *
+              10,
+          ) / 10,
+        ),
+      ),
     );
   if (km! >= 79.95)
     return result(
@@ -133,6 +147,54 @@ export function assessProgression(input: {
       "hold",
       "The planned longest run is over 10% above the longest recorded run in 30 days. Review that session before building further.",
     );
+  // A completed planned cutback may return toward a recently completed build.
+  // Missed weeks, illness reductions and a distant old peak do not establish readiness.
+  if (
+    reference.cutback &&
+    (reference.weekNumber % 4 === 0 ||
+      reference.development?.phase === "cutback")
+  ) {
+    const established = [...input.plans]
+      .filter(
+        (p) =>
+          !p.cutback &&
+          p.start >= shiftDay(reference.start, -14) &&
+          p.start < reference.start,
+      )
+      .sort((a, b) => b.start.localeCompare(a.start))
+      .find((p) => {
+        const week = input.weeks.find((w) => w.start === p.start);
+        const recovery = input.checkIns.filter(
+          (c) => c.day >= p.start && c.day < shiftDay(p.start, 7),
+        );
+        const loadWeek = input.load?.weeks.find((w) => w.start === p.start);
+        return (
+          week &&
+          week.runningKm >= planKm(p) * 0.9 &&
+          recovery.length >= 2 &&
+          recovery.every((c) => !c.pain && c.fatigue <= 2 && c.soreness <= 2) &&
+          (!input.load ||
+            (loadWeek &&
+              loadWeek.unknownSessions === 0 &&
+              loadWeek.coverage >= 0.8))
+        );
+      });
+    if (established) {
+      const completed = input.weeks.find((w) => w.start === established.start)!;
+      const restored = Math.min(
+        80,
+        nextMilestone,
+        planKm(established),
+        completed.runningKm,
+      );
+      if (restored > km! + 0.05)
+        return result(
+          "increase",
+          "The planned cutback was completed with good recovery. Return toward recently completed volume; this is consolidation, not a new peak.",
+          Math.round(restored * 10) / 10,
+        );
+    }
+  }
   return result(
     "increase",
     "The completed week and recent check-ins support considering a small increase. Confirm the next week manually.",

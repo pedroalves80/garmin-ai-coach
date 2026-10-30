@@ -53,6 +53,7 @@ export type RunWorkout = {
 };
 
 export type TrainingPlan = {
+  development?: import("./athlete").PlanDevelopment;
   weekNumber: number;
   start: string;
   targetKm: number;

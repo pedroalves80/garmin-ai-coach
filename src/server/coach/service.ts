@@ -51,6 +51,7 @@ export class CoachService {
       .get(day) as { attempted_at: string; error: string | null } | undefined;
     return {
       configured,
+      contextHash: coachContext(this.db, this.now()).hash,
       model: this.model,
       dailyUsed: count(day),
       monthlyUsed: count(day.slice(0, 7)),
@@ -203,6 +204,10 @@ export class CoachService {
               JSON.stringify(proposal.after),
               this.now().toISOString(),
             );
+        review.appliedContextHash = coachContext(this.db, this.now()).hash;
+        this.db
+          .prepare("UPDATE coach_reviews SET review_json=? WHERE id=?")
+          .run(JSON.stringify(review), id);
         return { saved: true };
       })
       .immediate();

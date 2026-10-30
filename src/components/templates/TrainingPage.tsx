@@ -8,6 +8,9 @@ import { TodayOverview } from "@/components/organisms/TodayOverview";
 import { TrainingWorkspace } from "@/components/organisms/TrainingWorkspace";
 import { ProgressWorkspace } from "@/components/organisms/ProgressWorkspace";
 import { CoachPanel } from "@/components/organisms/CoachPanel";
+import { AthleteProfileForm } from "@/components/organisms/AthleteProfileForm";
+import { AthleteRepository } from "@/server/training/athlete-repository";
+import { calendarDate } from "@/server/training/dates";
 import { TrainingPreferencesForm } from "@/components/organisms/TrainingPreferencesForm";
 import { ScheduleRepository } from "@/server/training/schedule-repository";
 import { getDatabase } from "@/server/db/client";
@@ -56,6 +59,10 @@ async function Content({ view }: { view: View }) {
         />
         <TrainingPreferencesForm
           initial={new ScheduleRepository(getDatabase()).preferences()}
+        />
+        <AthleteProfileForm
+          initial={new AthleteRepository(getDatabase()).profile()}
+          today={calendarDate(new Date())}
         />
         <section className="surface">
           <span className="eyebrow">YOUR PERSONAL WORKSPACE</span>

@@ -17,7 +17,7 @@ import {
   ScheduleRuleError,
 } from "../../shared/weekly-schedule";
 import { sameWorkout } from "../../shared/workout-identity";
-import { calendarDate } from "./dates";
+import { calendarDate, shiftDay } from "./dates";
 import { sportGroup } from "./metrics";
 
 export function trainingCalendar(
@@ -141,4 +141,44 @@ export function moveRunningDay(
       sessions: [moved, ...target.sessions.map((s) => s.session)],
     },
   ] satisfies ScheduleChange[];
+}
+
+export function skipSecondarySession(
+  db: Database.Database,
+  plan: TrainingPlan,
+  offset: number,
+  activities: ActivityMeasurement[],
+  now: Date,
+) {
+  const day = trainingCalendar(db, plan, activities, now).days[offset];
+  if (!day || offset === 6 || day.day < calendarDate(now))
+    throw new ScheduleRuleError("Choose an upcoming Monday–Saturday session.");
+  const remaining = day.sessions
+    .filter((s) => s.session.sport === "running" || s.status === "recorded")
+    .map((s) => s.session);
+  if (remaining.length === day.sessions.length)
+    throw new ScheduleRuleError(
+      "There is no uncompleted secondary session to skip.",
+    );
+  return [{ day: day.day, sessions: remaining }] satisfies ScheduleChange[];
+}
+
+export function trainingEvidencePlans(
+  db: Database.Database,
+  plans: TrainingPlan[],
+  activities: ActivityMeasurement[],
+  now: Date,
+) {
+  const today = calendarDate(now);
+  return plans
+    .filter((plan) => plan.start >= shiftDay(today, -28) && plan.start <= today)
+    .map((plan) => ({
+      ...plan,
+      workouts: trainingCalendar(db, plan, activities, now).days.flatMap(
+        (day) =>
+          day.sessions.flatMap((entry) =>
+            entry.session.sport === "running" ? [entry.session.workout] : [],
+          ),
+      ),
+    }));
 }

@@ -296,6 +296,33 @@ export function WeeklySchedule({
             </details>
           )}
       </section>
+      {saved &&
+        day.day >= today &&
+        day.dayOffset < 6 &&
+        day.sessions.some(
+          (s) => s.session.sport !== "running" && s.status === "planned",
+        ) && (
+          <div className="surface">
+            <p className="muted small-text">
+              Supporting sessions are optional. Skip the later session when
+              recovery or the next key run needs priority. A prescribed ride
+              remains at least one hour.
+            </p>
+            <Button
+              className="button-secondary"
+              disabled={pending}
+              onClick={() =>
+                void save({
+                  action: "skip_secondary",
+                  start: plan.start,
+                  dayOffset: selectedDay,
+                })
+              }
+            >
+              Skip later session · keep the run
+            </Button>
+          </div>
+        )}
       {message && (
         <p className="inline-notice small-text" role="status">
           {message}

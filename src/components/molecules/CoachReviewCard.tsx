@@ -7,8 +7,8 @@ import type { CoachAction, CoachReview } from "@/shared/types/coach";
 
 const labels: Record<CoachAction, string> = {
   follow: "Keep the schedule",
-  shorten: "Reduce distance · minimum 5 km · HR 125–140 bpm",
-  easy: "Replace with HR 125–140 bpm",
+  shorten: "Reduce distance · minimum 5 km · reviewed recovery HR",
+  easy: "Replace quality with reviewed recovery HR",
   rest: "Rest from remaining training",
   cycle: "Keep the run · replace Hyrox with recovery cycling",
   skip_secondary: "Keep the run · skip the later session",
@@ -24,11 +24,13 @@ export function CoachReviewCard({
   accepted,
   pending,
   onAccept,
+  stale = false,
 }: {
   review: CoachReview;
   accepted: boolean;
   pending: boolean;
   onAccept: () => void;
+  stale?: boolean;
 }) {
   const [copyMessage, setCopyMessage] = useState("");
   return (
@@ -50,6 +52,12 @@ export function CoachReviewCard({
             ? "Skip the later session"
             : labels[review.action]}
       </h3>
+      {stale && (
+        <p className="inline-notice error-text">
+          Training data changed after this review. Request a fresh review before
+          using its recommendation. Your current calendar is in Plan.
+        </p>
+      )}
       <p>{review.summary}</p>
       <ul>
         {review.observations.map((text, i) => (
@@ -85,7 +93,7 @@ export function CoachReviewCard({
             </section>
           ))}
           {!accepted && (
-            <Button disabled={pending} onClick={onAccept}>
+            <Button disabled={pending || stale} onClick={onAccept}>
               Approve schedule change
             </Button>
           )}
@@ -116,7 +124,7 @@ export function CoachReviewCard({
               </p>
             )}
             {!accepted && (
-              <Button disabled={pending} onClick={onAccept}>
+              <Button disabled={pending || stale} onClick={onAccept}>
                 Approve this workout change
               </Button>
             )}

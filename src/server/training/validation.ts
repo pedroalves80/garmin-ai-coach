@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runningTargetsSchema } from "./athlete-repository";
 import type { PlanStep, TrainingPlan } from "../../shared/types/metrics";
 
 export const checkInSchema = z
@@ -63,6 +64,22 @@ export const savedPlanSchema: z.ZodType<TrainingPlan> =
   planSettingsSchema.extend({
     targetKm: z.number().min(20).max(80),
     cutback: z.boolean(),
+    development: z
+      .object({
+        phase: z.enum([
+          "volume",
+          "quality",
+          "consolidate",
+          "cutback",
+          "recovery",
+          "return",
+        ]),
+        qualityLevel: z.number().int().min(0).max(6),
+        reason: z.string().max(500),
+        targets: runningTargetsSchema,
+        reviewedAt: z.iso.date().nullable(),
+      })
+      .optional(),
     workouts: z
       .array(
         z.object({

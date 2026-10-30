@@ -30,9 +30,11 @@ export type CoachReview = {
   proposal: { before: RunWorkout; after: RunWorkout | null } | null;
   scheduleChanges?: ScheduleChange[];
   usage: { inputTokens: number; outputTokens: number };
+  appliedContextHash?: string;
 };
 export type CoachStatus = {
   configured: boolean;
+  contextHash?: string;
   model: string;
   dailyUsed: number;
   monthlyUsed: number;

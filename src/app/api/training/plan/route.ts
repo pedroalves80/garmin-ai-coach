@@ -3,8 +3,12 @@ import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
 import { TrainingRepository } from "@/server/training/repository";
 import { planSettingsSchema } from "@/server/training/validation";
-import { createTrainingPlan, planKm } from "@/shared/training-plan";
+import { planKm, workoutKm } from "@/shared/training-plan";
 import { calendarDate, mondayOf, shiftDay } from "@/server/training/dates";
+import { developedPlan } from "@/shared/plan-development";
+import { reviewPlannedWeek } from "@/shared/planned-load";
+import { buildWeekSchedule } from "@/shared/weekly-schedule";
+import { ScheduleRepository } from "@/server/training/schedule-repository";
 import { trainingDashboardData } from "@/server/training/dashboard";
 import {
   validateRunningSchedule,
@@ -42,14 +46,15 @@ export async function POST(request: Request) {
     );
   try {
     const { weekNumber, start, easyPace, tempoPace, targetKm } = parsed.data;
-    const plan = createTrainingPlan(
-      weekNumber,
-      start,
-      easyPace,
-      tempoPace,
-      targetKm,
+    const db = getDatabase(),
+      repository = new TrainingRepository(db),
+      data = trainingDashboardData();
+    const plan = developedPlan(
+      { weekNumber, start, easyPace, tempoPace, targetKm },
+      data.athlete,
+      repository.plans(),
+      data.development,
     );
-    const repository = new TrainingRepository(getDatabase());
     validateRunningSchedule(plan);
     // Higher milestones are previews. Approval advances only one stage at a time.
     const previous = repository
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     if (previous && planKm(plan) > planKm(previous) + 0.05) {
-      const readiness = trainingDashboardData().progression;
+      const readiness = data.progression;
       if (
         readiness.decision !== "increase" ||
         readiness.suggestedKm === null ||
@@ -87,6 +92,97 @@ export async function POST(request: Request) {
           { status: 409 },
         );
     }
+    const schedule = new ScheduleRepository(db);
+    const proposedReview = reviewPlannedWeek(
+      buildWeekSchedule(plan, schedule.week(start), schedule.preferences()),
+      plan,
+      data.load,
+    );
+    const oldTargets = previous?.development?.targets;
+    const newTargets = plan.development?.targets;
+    const faster =
+      previous &&
+      (tempoPace < previous.tempoPace ||
+        (newTargets &&
+          (
+            [
+              "baseMin",
+              "baseMax",
+              "recoveryMin",
+              "recoveryMax",
+              "longMin",
+              "longMax",
+            ] as const
+          ).some(
+            (key) =>
+              newTargets[key] >
+              (oldTargets?.[key] ??
+                {
+                  baseMin: 135,
+                  baseMax: 148,
+                  recoveryMin: 125,
+                  recoveryMax: 140,
+                  longMin: 135,
+                  longMax: 150,
+                }[key]),
+          )) ||
+        (newTargets &&
+          (newTargets.strideMin < (oldTargets?.strideMin ?? 240) ||
+            newTargets.strideMax < (oldTargets?.strideMax ?? 270))));
+    if (faster && !data.development.calibrationFresh)
+      return NextResponse.json(
+        {
+          error:
+            "Review running targets with current evidence in Settings before prescribing higher intensity.",
+        },
+        { status: 409 },
+      );
+    const advancing =
+      previous &&
+      (planKm(plan) > planKm(previous) + 0.05 ||
+        (plan.development?.qualityLevel ?? 0) >
+          (previous.development?.qualityLevel ?? 0) ||
+        faster);
+    if (
+      advancing &&
+      (proposedReview.hardDays > 3 ||
+        (proposedReview.baselineAu &&
+          proposedReview.estimatedAu > proposedReview.baselineAu * 1.15))
+    )
+      return NextResponse.json(
+        {
+          error:
+            "Review combined effort before progressing: remove demanding secondary sessions in the attendance settings, or consolidate this running week.",
+        },
+        { status: 409 },
+      );
+    if (previous && planKm(plan) > planKm(previous) + 0.05 && faster)
+      return NextResponse.json(
+        {
+          error:
+            "Develop distance or intensity in one review, not both. Consolidate volume when reviewing faster pace or higher HR targets.",
+        },
+        { status: 409 },
+      );
+    const longest = Math.max(
+      0,
+      ...data.effortSessions
+        .filter(
+          (a) => a.sport === "running" && a.day >= shiftDay(data.today, -30),
+        )
+        .map((a) => a.km),
+    );
+    const proposedLongest = Math.max(
+      ...plan.workouts.map((w) => workoutKm(w, plan.easyPace)),
+    );
+    if (advancing && longest > 0 && proposedLongest > longest * 1.1 + 0.01)
+      return NextResponse.json(
+        {
+          error:
+            "The proposed longest run exceeds the longest completed run in 30 days by over 10%. Review its distance before progressing.",
+        },
+        { status: 409 },
+      );
     repository.savePlan(plan);
     return NextResponse.json({ saved: true, plannedKm: planKm(plan) });
   } catch (error) {

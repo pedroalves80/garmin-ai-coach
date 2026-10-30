@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import type { DashboardData } from "@/server/dashboard/data";
+import { SessionEffortLog } from "./SessionEffortLog";
 import { TrainingMetrics } from "./TrainingMetrics";
 import { ActivityHistory } from "./ActivityHistory";
 export function ProgressWorkspace({
@@ -14,6 +15,7 @@ export function ProgressWorkspace({
   const [view, setView] = useState("trends");
   return (
     <div className="screen-stack">
+      <SessionEffortLog sessions={data.effortSessions} />
       <div
         className="segmented-control"
         role="group"

@@ -9,8 +9,16 @@ import type { CoachAction, CoachKind } from "../../shared/types/coach";
 import type { RunWorkout } from "../../shared/types/metrics";
 import { minimumRunKm, workoutKm } from "../../shared/training-plan";
 import { ScheduleRepository } from "../training/schedule-repository";
-import { trainingCalendar, moveRunningDay } from "../training/calendar";
+import {
+  trainingCalendar,
+  moveRunningDay,
+  trainingEvidencePlans,
+} from "../training/calendar";
 import type { ScheduleChange } from "../../shared/types/schedule";
+import { AthleteRepository } from "../training/athlete-repository";
+import { measuredLoad, combinedLoadReview } from "../training/load";
+import { reviewPlannedWeek } from "../../shared/planned-load";
+import { developmentReadiness } from "../training/development";
 import { MINIMUM_CYCLING_MINUTES } from "../../shared/types/schedule";
 
 export function coachContext(sqlite: Database.Database, now: Date) {
@@ -39,6 +47,20 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const accepted = acceptedRow?.review_id
     ? { review_id: acceptedRow.review_id }
     : undefined;
+  const athleteRepository = new AthleteRepository(sqlite),
+    athlete = athleteRepository.profile(),
+    efforts = athleteRepository.efforts();
+  const load = combinedLoadReview(measuredLoad(activities, efforts, now));
+  const development = developmentReadiness(
+    athlete,
+    trainingEvidencePlans(sqlite, plans, activities, now),
+    activities,
+    efforts,
+    training.checkIns(),
+    load,
+    now,
+    lastSync,
+  );
   const scheduleRepository = new ScheduleRepository(sqlite);
   const calendar = plan
     ? trainingCalendar(sqlite, plan, activities, now)
@@ -155,6 +177,35 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       }
     }
   }
+  const recentHard = activities.some(
+    (a) =>
+      [shiftDay(day, -1), day].includes(calendarDate(new Date(a.startedAt))) &&
+      (efforts.find((e) => e.activityId === a.id)?.rpe ?? 0) >= 7,
+  );
+  const moderate =
+    todayCheckIn && Math.max(todayCheckIn.fatigue, todayCheckIn.soreness) >= 3;
+  if (canSchedule && !pain && (moderate || recentHard)) {
+    const secondary = todaySchedule?.sessions.some(
+      (s) => s.session.sport !== "running" && s.status === "planned",
+    );
+    if (
+      workout &&
+      !ranToday &&
+      todayCheckIn!.fatigue < 4 &&
+      todayCheckIn!.soreness < 4
+    ) {
+      allowed =
+        workout.type === "quality"
+          ? ["easy", "rest"]
+          : secondary
+            ? ["skip_secondary", "rest"]
+            : ["follow", "rest"];
+    } else if (!workout || ranToday)
+      allowed = secondary ? ["skip_secondary", "rest"] : ["follow", "rest"];
+    constraints.push(
+      "Recent effort or fatigue calls for protecting recovery. Remove uncompleted secondary training; convert quality to reviewed recovery HR or rest. The one-hour cycling minimum never requires a ride.",
+    );
+  }
   if (todaySchedule && todaySchedule.recorded.length >= 2) {
     allowed = pain ? ["rest"] : ["follow", "rest"];
     constraints.push(
@@ -185,6 +236,16 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     },
     lastSync,
     schedule: calendar,
+    athlete: {
+      goal: athlete.goal,
+      targets: athlete.targets,
+      calibrationSource: athlete.calibrationSource,
+      reviewedAt: athlete.reviewedAt,
+    },
+    development,
+    combinedLoad: load,
+    plannedLoad:
+      calendar && plan ? reviewPlannedWeek(calendar, plan, load) : null,
     preferences: scheduleRepository.preferences(),
     hyroxAttendance: scheduleRepository.week(monday).hyrox,
     movableRunDays: Object.keys(moves),
@@ -209,6 +270,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
             minutes: Math.round((a.durationSeconds ?? 0) / 60),
             km: Math.round((a.distanceMeters ?? 0) / 100) / 10,
             averageHeartRate: a.averageHeartRate,
+            sessionRpe: efforts.find((e) => e.activityId === a.id)?.rpe ?? null,
           }))
           .slice(0, 8),
       };
@@ -233,14 +295,18 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       : null,
     ranToday,
     acceptedReview: accepted?.review_id ?? null,
-    comparison: comparableRuns(activities, now),
+    comparison: comparableRuns(activities, now, {
+      min: athlete.targets.baseMin,
+      max: athlete.targets.baseMax,
+    }),
     progression: assessProgression({
       now,
       plans,
       weeks,
-      checkIns,
+      checkIns: training.checkIns(),
       activities,
       lastSync,
+      load,
     }),
     constraints,
     allowedActions: allowed,
@@ -258,6 +324,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     allowed,
     constraints,
     todaySchedule,
+    athlete,
     moves,
     canSchedule,
     preferences: scheduleRepository.preferences(),

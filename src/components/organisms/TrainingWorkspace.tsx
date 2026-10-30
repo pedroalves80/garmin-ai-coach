@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import {
   createTrainingPlan,
-  defaultEasyPace,
-  defaultTempoPace,
   formatPace,
   planKm,
   minimumRunKm,
   volumeMilestones,
 } from "@/shared/training-plan";
+import { developedPlan } from "@/shared/plan-development";
+import { WeeklyLoadReview } from "./WeeklyLoadReview";
 import { sameWorkout } from "@/shared/workout-identity";
 import { Button } from "@/components/atoms/Button";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
@@ -49,6 +49,7 @@ function matchesGeneratedWeek(
       plan.easyPace,
       plan.tempoPace,
       plan.targetKm,
+      plan.development,
     );
     return (
       plan.workouts.length === generated.workouts.length &&
@@ -66,9 +67,11 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   const [week, setWeek] = useState(initial?.weekNumber ?? 1),
     [start, setStart] = useState(initial?.start ?? offset(data.monday, 7)),
     [targetKm, setTargetKm] = useState(String(initial?.targetKm ?? 25));
-  const [easy] = useState(formatPace(initial?.easyPace ?? defaultEasyPace)),
+  const [easy, setEasy] = useState(
+      formatPace(initial?.easyPace ?? data.athlete.easyPace),
+    ),
     [tempo, setTempo] = useState(
-      formatPace(initial?.tempoPace ?? defaultTempoPace),
+      formatPace(initial?.tempoPace ?? data.athlete.tempoPace),
     );
   const todayOffset = Math.round(
     (Date.parse(`${data.today}T12:00:00Z`) -
@@ -99,18 +102,27 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       !Number.isFinite(Date.parse(`${start}T12:00:00Z`))
     )
       throw new Error("Choose a date");
-    preview = createTrainingPlan(
-      week,
-      start,
-      parsePace(easy),
-      parsePace(tempo),
-      Number(targetKm),
+    preview = developedPlan(
+      {
+        weekNumber: week,
+        start,
+        easyPace: parsePace(easy),
+        tempoPace: parsePace(tempo),
+        targetKm: Number(targetKm),
+      },
+      data.athlete,
+      data.plans,
+      data.development,
     );
   } catch {
     /* Shown next to settings. */
   }
   const saved =
     preview &&
+    initial?.start === start &&
+    initial.workouts.every((w) =>
+      preview!.workouts.some((next) => sameWorkout(w, next)),
+    ) &&
     savedKey ===
       settingsKey(
         start,
@@ -287,6 +299,35 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             </p>
           </div>
         </details>
+        <div className="action-row">
+          <Button
+            type="button"
+            className="button-secondary"
+            onClick={() => {
+              setEasy(formatPace(data.athlete.easyPace));
+              setTempo(formatPace(data.athlete.tempoPace));
+            }}
+          >
+            Use athlete pace settings
+          </Button>
+          <Button
+            type="button"
+            className="button-secondary"
+            onClick={() => {
+              if (data.progression.suggestedKm !== null)
+                setTargetKm(
+                  String(
+                    Math.min(
+                      volumeMilestones[week - 1],
+                      data.progression.suggestedKm,
+                    ),
+                  ),
+                );
+            }}
+          >
+            Use volume review suggestion
+          </Button>
+        </div>
         {!preview && (
           <p role="alert" className="error-text">
             Choose a valid date, tempo pace of 3:00–7:00/km, and volume from 20
@@ -295,10 +336,11 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         )}
         <div className="plan-save-row">
           <p className="muted small-text">
-            All steps use distance. Every run totals at least {minimumRunKm} km,
-            including warm-up and cool-down.
+            Saving a changed week replaces daily adjustments. All steps use
+            distance. Every run totals at least {minimumRunKm} km, including
+            warm-up and cool-down.
           </p>
-          <Button disabled={pending || !preview} type="submit">
+          <Button disabled={pending || !preview || !!saved} type="submit">
             {pending ? "Saving…" : "Save reviewed week"}
           </Button>
         </div>
@@ -310,6 +352,22 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         >
           {message}
         </p>
+      )}
+      {preview && (
+        <WeeklyLoadReview
+          plan={preview}
+          calendar={
+            saved && data.previewCalendar?.start === start
+              ? data.previewCalendar
+              : buildWeekSchedule(
+                  preview,
+                  data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
+                  data.preferences,
+                )
+          }
+          load={data.load}
+          development={data.development}
+        />
       )}
       {preview && (
         <WeeklySchedule

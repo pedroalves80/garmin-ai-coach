@@ -98,3 +98,17 @@ export const automaticCoach = sqliteTable("automatic_coach", {
   attemptedAt: text("attempted_at").notNull(),
   error: text("error"),
 });
+export const athleteProfile = sqliteTable("athlete_profile", {
+  id: integer("id").primaryKey(),
+  profileJson: text("profile_json").notNull(),
+});
+export const sessionEfforts = sqliteTable("session_efforts", {
+  activityId: text("activity_id")
+    .primaryKey()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  rpe: integer("rpe").notNull(),
+  prescriptionCompleted: integer("prescription_completed", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  updatedAt: text("updated_at").notNull(),
+});

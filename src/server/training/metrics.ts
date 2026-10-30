@@ -84,14 +84,17 @@ type Sample = {
   lon: number;
   temperature: number | null;
 };
-function sample(item: ActivityMeasurement): Sample | null {
+function sample(
+  item: ActivityMeasurement,
+  hrRange = { min: 135, max: 150 },
+): Sample | null {
   if (
     item.sportType !== "running" ||
     !item.distanceMeters ||
     !item.durationSeconds ||
     !item.averageHeartRate ||
-    item.averageHeartRate < 135 ||
-    item.averageHeartRate > 150 ||
+    item.averageHeartRate < hrRange.min ||
+    item.averageHeartRate > hrRange.max ||
     item.distanceMeters < 3000 ||
     item.distanceMeters > 15000
   )
@@ -122,7 +125,11 @@ function sample(item: ActivityMeasurement): Sample | null {
   };
 }
 
-export function comparableRuns(activities: ActivityMeasurement[], now: Date) {
+export function comparableRuns(
+  activities: ActivityMeasurement[],
+  now: Date,
+  hrRange = { min: 135, max: 150 },
+) {
   const cutoff = now.getTime() - 28 * 86400000;
   const oldest = now.getTime() - 56 * 86400000;
   const samples = activities
@@ -131,7 +138,7 @@ export function comparableRuns(activities: ActivityMeasurement[], now: Date) {
         Date.parse(a.startedAt) <= now.getTime() &&
         Date.parse(a.startedAt) >= oldest,
     )
-    .map(sample)
+    .map((item) => sample(item, hrRange))
     .filter((x): x is Sample => x !== null);
   const recent = samples
     .filter((x) => Date.parse(x.item.startedAt) >= cutoff)

@@ -27,7 +27,11 @@ export function CoachPanel() {
           throw new Error("Coach status unavailable. Reload to retry.");
         const data: CoachStatus = await response.json();
         setStatus(data);
-        setSelected((current) => current ?? data.reviews[0] ?? null);
+        setSelected((current) =>
+          current
+            ? (data.reviews.find((r) => r.id === current.id) ?? current)
+            : (data.reviews[0] ?? null),
+        );
       } catch (error) {
         if (!controller.signal.aborted) {
           setMessage(
@@ -76,7 +80,15 @@ export function CoachPanel() {
         router.refresh();
       }
       const refreshed = await fetch("/api/coach", { cache: "no-store" });
-      if (refreshed.ok) setStatus(await refreshed.json());
+      if (refreshed.ok) {
+        const next: CoachStatus = await refreshed.json();
+        setStatus(next);
+        setSelected((current) =>
+          current
+            ? (next.reviews.find((r) => r.id === current.id) ?? current)
+            : null,
+        );
+      }
     } catch (error) {
       setFailed(true);
       setMessage(
@@ -194,6 +206,11 @@ export function CoachPanel() {
           key={selected.id}
           review={selected}
           accepted={status?.accepted?.reviewId === selected.id}
+          stale={
+            !!status?.contextHash &&
+            selected.contextHash !== status.contextHash &&
+            selected.appliedContextHash !== status.contextHash
+          }
           pending={pending}
           onAccept={() => void request({ action: "accept", id: selected.id })}
         />

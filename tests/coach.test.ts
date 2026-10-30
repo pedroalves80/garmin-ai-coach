@@ -174,7 +174,14 @@ test("identical reviews are cached across service instances; new check-ins inval
   let calls = 0;
   const fake: CoachAdapter = async (input) => {
     calls++;
-    return adapter(input);
+    const result = await adapter(input);
+    return {
+      ...result,
+      output: {
+        ...output,
+        action: input.allowed.includes("shorten") ? "shorten" : "easy",
+      },
+    };
   };
   const service = new CoachService(db, fake, "test", () => now);
   const first = await service.review("today");
@@ -358,5 +365,31 @@ test("persistent limits and concurrent request lock prevent duplicate AI spend",
     () => new Date("2026-10-30T13:00:00Z"),
   );
   await assert.rejects(tomorrow.review("weekly"), /limit reached/);
+  db.close();
+});
+
+test("approved review fingerprints stay current until new recovery data arrives", async () => {
+  const { db, training } = fixture();
+  const service = new CoachService(db, adapter, "test", () => now);
+  const { review } = await service.review("today");
+  assert.equal(service.status(true).contextHash, review.contextHash);
+  service.accept(review.id);
+  const status = service.status(true);
+  assert.equal(
+    status.reviews.find((r) => r.id === review.id)?.appliedContextHash,
+    status.contextHash,
+  );
+  training.saveCheckIn({
+    day: "2026-10-29",
+    fatigue: 3,
+    soreness: 2,
+    pain: 0,
+    notes: "",
+  });
+  const changed = service.status(true);
+  assert.notEqual(
+    changed.reviews.find((r) => r.id === review.id)?.appliedContextHash,
+    changed.contextHash,
+  );
   db.close();
 });

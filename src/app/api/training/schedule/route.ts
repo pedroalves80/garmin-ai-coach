@@ -10,7 +10,10 @@ import {
 import { TrainingRepository } from "@/server/training/repository";
 import { GarminRepository } from "@/server/db/garmin-repository";
 import { calendarDate, mondayOf, shiftDay } from "@/server/training/dates";
-import { moveRunningDay } from "@/server/training/calendar";
+import {
+  moveRunningDay,
+  skipSecondarySession,
+} from "@/server/training/calendar";
 import {
   validateDaySessions,
   buildWeekSchedule,
@@ -18,6 +21,13 @@ import {
 } from "@/shared/weekly-schedule";
 
 const schema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("skip_secondary"),
+      start: z.iso.date(),
+      dayOffset: z.number().int().min(0).max(5),
+    })
+    .strict(),
   z
     .object({
       action: z.literal("preferences"),
@@ -115,14 +125,23 @@ export async function POST(request: Request) {
             "Save the reviewed week before moving a run.",
           );
         db.transaction(() => {
-          const changes = moveRunningDay(
-            db,
-            plan,
-            input.from,
-            input.to,
-            new GarminRepository(db).allActivities(),
-            now,
-          );
+          const changes =
+            input.action === "skip_secondary"
+              ? skipSecondarySession(
+                  db,
+                  plan,
+                  input.dayOffset,
+                  new GarminRepository(db).allActivities(),
+                  now,
+                )
+              : moveRunningDay(
+                  db,
+                  plan,
+                  input.from,
+                  input.to,
+                  new GarminRepository(db).allActivities(),
+                  now,
+                );
           for (const change of changes)
             validateDaySessions(
               new Date(`${change.day}T12:00:00Z`).getUTCDay() === 0

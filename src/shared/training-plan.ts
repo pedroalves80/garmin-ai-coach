@@ -1,3 +1,4 @@
+import { DEFAULT_TARGETS, type PlanDevelopment } from "./types/athlete";
 import type {
   PlanStep,
   RunWorkout,
@@ -128,6 +129,7 @@ export function createTrainingPlan(
   easyPace = defaultEasyPace,
   tempoPace = defaultTempoPace,
   targetKm?: number,
+  development?: PlanDevelopment,
 ): TrainingPlan {
   if (
     !Number.isInteger(weekNumber) ||
@@ -153,7 +155,10 @@ export function createTrainingPlan(
   if (Math.abs(volume * 100 - Math.round(volume * 100)) > 1e-6)
     throw new Error("Use weekly volume in increments of 0.01 km");
   const cutback =
-    weekNumber % 4 === 0 || volume < volumeMilestones[weekNumber - 1] * 0.9;
+    weekNumber % 4 === 0 ||
+    (development
+      ? ["cutback", "recovery"].includes(development.phase)
+      : volume < volumeMilestones[weekNumber - 1] * 0.9);
   const allocation =
     volume < 40
       ? [
@@ -182,6 +187,25 @@ export function createTrainingPlan(
     Math.round(volume * 1000),
     allocation.map(([, weight]) => weight),
   );
+  const targets = development?.targets ?? DEFAULT_TARGETS;
+  const levels = [
+    [2, 1000],
+    [2, 1300],
+    [3, 1000],
+    [2, 1800],
+    [3, 1400],
+    [2, 2400],
+    [3, 1800],
+  ];
+  let qualityLevel = Math.min(6, Math.max(0, development?.qualityLevel ?? 1));
+  const qualityDistance = distances[allocation.findIndex(([day]) => day === 3)];
+  while (
+    qualityLevel > 0 &&
+    2000 + levels[qualityLevel][0] * (levels[qualityLevel][1] + 300) + 100 >
+      qualityDistance
+  )
+    qualityLevel--;
+  const [repetitions, repMeters] = levels[qualityLevel];
   const workouts = allocation.map(([dayOffset], i): RunWorkout => {
     const meters = distances[i];
     let type: RunWorkout["type"] =
@@ -207,12 +231,12 @@ export function createTrainingPlan(
         ? [
             {
               kind: "repeat",
-              times: 2,
+              times: repetitions,
               steps: [
                 {
                   kind: "step",
                   name: "Run",
-                  amount: { kind: "distance", meters: 1300 },
+                  amount: { kind: "distance", meters: repMeters },
                   target: {
                     kind: "pace",
                     min: tempoPace - 5,
@@ -238,7 +262,11 @@ export function createTrainingPlan(
                     kind: "step",
                     name: "Run",
                     amount: { kind: "distance", meters: 80 },
-                    target: { kind: "pace", min: 240, max: 270 },
+                    target: {
+                      kind: "pace",
+                      min: targets.strideMin,
+                      max: targets.strideMax,
+                    },
                   },
                   {
                     kind: "step",
@@ -263,7 +291,7 @@ export function createTrainingPlan(
       type,
       title:
         type === "quality"
-          ? "Tempo · 2 × 1.30 km"
+          ? `Tempo · ${repetitions} × ${(repMeters / 1000).toFixed(2)} km`
           : type === "strides"
             ? "Base + 6 × 0.08 km strides"
             : type === "long"
@@ -272,19 +300,45 @@ export function createTrainingPlan(
                 ? "Recovery run"
                 : "Base run",
       steps: [
-        distanceStep("Warm Up", warm, 125, 145),
+        distanceStep(
+          "Warm Up",
+          warm,
+          development ? targets.recoveryMin : 125,
+          development ? targets.recoveryMax : 145,
+        ),
         distanceStep(
           "Run",
           remaining,
-          recovery ? 125 : 135,
-          recovery ? 140 : type === "long" ? 150 : 148,
+          recovery
+            ? targets.recoveryMin
+            : type === "long"
+              ? targets.longMin
+              : targets.baseMin,
+          recovery
+            ? targets.recoveryMax
+            : type === "long"
+              ? targets.longMax
+              : targets.baseMax,
         ),
         ...extras,
-        distanceStep("Cool Down", cool, 120, 140),
+        distanceStep(
+          "Cool Down",
+          cool,
+          development ? targets.recoveryMin : 120,
+          development ? targets.recoveryMax : 140,
+        ),
       ],
     };
   });
   return {
+    ...(development
+      ? {
+          development: {
+            ...development,
+            qualityLevel: cutback ? development.qualityLevel : qualityLevel,
+          },
+        }
+      : {}),
     weekNumber,
     start,
     targetKm: volume,

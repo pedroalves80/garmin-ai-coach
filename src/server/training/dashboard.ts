@@ -10,7 +10,10 @@ import type {
   TrainingPlan,
 } from "../../shared/types/metrics";
 import { ScheduleRepository } from "./schedule-repository";
-import { trainingCalendar } from "./calendar";
+import { AthleteRepository } from "./athlete-repository";
+import { measuredLoad, combinedLoadReview } from "./load";
+import { developmentReadiness } from "./development";
+import { trainingCalendar, trainingEvidencePlans } from "./calendar";
 
 export function workoutCompletion(
   plan: TrainingPlan,
@@ -90,11 +93,48 @@ export function trainingDashboardData(now = new Date()) {
         s.session.sport === "running" ? [s.session.workout] : [],
       ),
     ) ?? [];
+  const athleteRepository = new AthleteRepository(sqlite),
+    athlete = athleteRepository.profile(),
+    efforts = athleteRepository.efforts();
+  const load = combinedLoadReview(measuredLoad(activities, efforts, now));
+  const development = developmentReadiness(
+    athlete,
+    trainingEvidencePlans(sqlite, plans, activities, now),
+    activities,
+    efforts,
+    checkIns,
+    load,
+    now,
+    lastSync,
+  );
   const calendarRun = todaySessions?.sessions.find(
     (s) => s.session.sport === "running",
   )?.session;
   return {
     today,
+    athlete,
+    development,
+    load,
+    plans,
+    effortSessions: activities
+      .filter(
+        (a) =>
+          calendarDate(new Date(a.startedAt)) >= shiftDay(today, -35) &&
+          sportGroup(a) !== "wellness",
+      )
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .slice(0, 100)
+      .map((a) => ({
+        id: a.id,
+        day: calendarDate(new Date(a.startedAt)),
+        sport: sportGroup(a),
+        minutes: (a.durationSeconds ?? 0) / 60,
+        km: (a.distanceMeters ?? 0) / 1000,
+        rpe: efforts.find((e) => e.activityId === a.id)?.rpe ?? null,
+        prescriptionCompleted:
+          efforts.find((e) => e.activityId === a.id)?.prescriptionCompleted ??
+          false,
+      })),
     todayRunning: {
       runs: todayRuns.length,
       km: todayRuns.reduce((sum, a) => sum + (a.distanceMeters ?? 0) / 1000, 0),
@@ -132,7 +172,10 @@ export function trainingDashboardData(now = new Date()) {
         : null,
     synced: !!lastSync,
     lastSync,
-    comparison: comparableRuns(activities, now),
+    comparison: comparableRuns(activities, now, {
+      min: athlete.targets.baseMin,
+      max: athlete.targets.baseMax,
+    }),
     checkIns,
     todayCheckIn: checkIns.find((c) => c.day === today) ?? null,
     currentPlan,
@@ -153,6 +196,7 @@ export function trainingDashboardData(now = new Date()) {
       checkIns,
       activities,
       lastSync,
+      load,
     }),
   };
 }

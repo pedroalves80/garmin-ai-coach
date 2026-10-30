@@ -28,15 +28,28 @@ export function DailyCoachSummary({ today }: { today: string }) {
   const review = status?.reviews.find(
     (r) => r.kind === "today" && r.day === today,
   );
+  const stale =
+    !!review &&
+    !!status?.contextHash &&
+    review.contextHash !== status.contextHash &&
+    review.appliedContextHash !== status.contextHash;
   return (
     <section className="surface daily-coach-summary">
       <span className="eyebrow">YOUR DAILY COACH</span>
-      <h2>{review ? "Today's recommendation" : "Start with your recovery"}</h2>
+      <h2>
+        {stale
+          ? "Your review needs refreshing"
+          : review
+            ? "Today's recommendation"
+            : "Start with your recovery"}
+      </h2>
       <p className="muted">
-        {review?.summary ??
-          (status?.automatic?.enabled
-            ? "Save this week, sync Garmin and log today’s check-in. The background coach will prepare one daily recommendation. Sunday remains rest."
-            : "Log your check-in and request a review in Coach when you need guidance.")}
+        {stale
+          ? "New training or recovery data arrived after the saved review. Request a fresh recommendation in Coach."
+          : (review?.summary ??
+            (status?.automatic?.enabled
+              ? "Save this week, sync Garmin and log today’s check-in. The background coach will prepare one daily recommendation. Sunday remains rest."
+              : "Log your check-in and request a review in Coach when you need guidance."))}
       </p>
       {review && (
         <p className="muted small-text">
