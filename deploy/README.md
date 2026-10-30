@@ -14,7 +14,7 @@ Under `/home/pi-user/docker-home`:
 - `setup-garmin-coach.sh` — provisions only the coach directories. Do not run the homelab's full setup script.
 - `backup-garmin-coach.sh` — online SQLite backup to `/mnt/backups/garmin-ai-coach`; keeps 14 verified snapshots and copies this app's private environment/deployment file. Does not stop containers.
 
-The web and worker run as UID 1001 with read-only roots, dropped capabilities, no privilege escalation, bounded logs, CPU and memory limits. The web is limited to 512 MiB / 0.75 CPU; the worker to 256 MiB / 0.25 CPU. Only the web joins `proxy_network`; the worker has its own outbound network and no published port.
+The web and worker run as UID 1001 with read-only roots, dropped capabilities, no privilege escalation, bounded logs, CPU and memory limits. The web is limited to 512 MiB / 0.75 CPU; the worker to 512 MiB / 0.25 CPU. Only the web joins `proxy_network`; the worker has its own outbound network and no published port.
 
 ## Access
 
