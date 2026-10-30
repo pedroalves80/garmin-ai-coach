@@ -145,6 +145,8 @@ Open **Plan → Races & training breaks**. The form previews the affected week b
 
 ## Raspberry Pi deployment
 
+The live homelab uses the isolated deployment described in [deploy/README.md](deploy/README.md), available at `http://192.168.1.10:3100`. The commands below remain the generic standalone setup; use the explicitly scoped homelab commands when updating the live Pi.
+
 Create `.env` with server-only secrets, then run:
 
 ```bash
