@@ -7,7 +7,8 @@ import type {
 } from "../../shared/types/coach";
 import { calendarDate } from "../training/dates";
 import { coachContext, allowedActions } from "./context";
-import { workoutProposal } from "./policy";
+import { workoutProposal, scheduleProposal } from "./policy";
+import { ScheduleRepository } from "../training/schedule-repository";
 import { PROMPT_VERSION, reviewOutput, type CoachAdapter } from "./openai";
 
 export class CoachError extends Error {
@@ -42,9 +43,12 @@ export class CoachService {
     ).map((row) => JSON.parse(row.review_json) as CoachReview);
     const accepted = this.db
       .prepare(
-        "SELECT day,review_id AS reviewId FROM coach_overrides WHERE day=?",
+        "SELECT day,review_id AS reviewId FROM day_schedule_overrides WHERE day=? UNION ALL SELECT day,review_id AS reviewId FROM coach_overrides WHERE day=? AND NOT EXISTS(SELECT 1 FROM day_schedule_overrides WHERE day=?) LIMIT 1",
       )
-      .get(day) as CoachStatus["accepted"] | undefined;
+      .get(day, day, day) as CoachStatus["accepted"] | undefined;
+    const automatic = this.db
+      .prepare("SELECT attempted_at,error FROM automatic_coach WHERE day=?")
+      .get(day) as { attempted_at: string; error: string | null } | undefined;
     return {
       configured,
       model: this.model,
@@ -53,7 +57,12 @@ export class CoachService {
       dailyLimit: 6,
       monthlyLimit: 60,
       reviews,
-      accepted: accepted ?? null,
+      accepted: accepted?.reviewId ? accepted : null,
+      automatic: {
+        enabled: new ScheduleRepository(this.db).preferences().automaticCoach,
+        attemptedAt: automatic?.attempted_at ?? null,
+        error: automatic?.error ?? null,
+      },
     };
   }
   async review(kind: CoachKind) {
@@ -107,6 +116,7 @@ export class CoachService {
       });
       const output = reviewOutput.parse(result.output);
       const proposal = workoutProposal(context, kind, output.action);
+      const scheduleChanges = scheduleProposal(context, kind, output.action);
       const review: CoachReview = {
         id,
         kind,
@@ -117,6 +127,7 @@ export class CoachService {
         ...output,
         constraints: context.constraints,
         proposal,
+        scheduleChanges,
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
@@ -150,8 +161,11 @@ export class CoachService {
         if (!row) throw new CoachError("Review not found.", 404);
         const review = JSON.parse(row.review_json) as CoachReview;
         const existing = this.db
-          .prepare("SELECT review_id FROM coach_overrides WHERE day=?")
-          .get(review.day) as { review_id: string } | undefined;
+          .prepare(
+            "SELECT review_id FROM day_schedule_overrides WHERE day=? UNION ALL SELECT review_id FROM coach_overrides WHERE day=? AND NOT EXISTS(SELECT 1 FROM day_schedule_overrides WHERE day=?) LIMIT 1",
+          )
+          .get(review.day, review.day, review.day) as
+          { review_id: string } | undefined;
         if (existing?.review_id === id) return { saved: true };
         const context = coachContext(this.db, this.now());
         if (context.day !== review.day || context.hash !== review.contextHash)
@@ -159,21 +173,36 @@ export class CoachService {
             "Training data changed since this review. Request a new review before approving it.",
             409,
           );
-        if (review.kind !== "today" || !review.proposal)
+        if (
+          review.kind !== "today" ||
+          (!review.proposal && !review.scheduleChanges?.length)
+        )
           throw new CoachError("This review has no workout change to approve.");
         const proposal = workoutProposal(context, review.kind, review.action);
-        if (!proposal)
-          throw new CoachError("This change is no longer available.", 409);
-        this.db
-          .prepare(
-            "INSERT INTO coach_overrides(day,review_id,workout_json,created_at) VALUES(?,?,?,?) ON CONFLICT(day) DO UPDATE SET review_id=excluded.review_id,workout_json=excluded.workout_json,created_at=excluded.created_at",
-          )
-          .run(
-            context.day,
-            id,
-            JSON.stringify(proposal.after),
-            this.now().toISOString(),
+        const changes = scheduleProposal(context, review.kind, review.action);
+        if (
+          review.scheduleChanges &&
+          JSON.stringify(changes) !== JSON.stringify(review.scheduleChanges)
+        )
+          throw new CoachError(
+            "This schedule changed. Request a new review.",
+            409,
           );
+        if (!proposal && !changes.length)
+          throw new CoachError("This change is no longer available.", 409);
+        if (changes.length)
+          new ScheduleRepository(this.db).saveChanges(changes, id);
+        if (proposal)
+          this.db
+            .prepare(
+              "INSERT INTO coach_overrides(day,review_id,workout_json,created_at) VALUES(?,?,?,?) ON CONFLICT(day) DO UPDATE SET review_id=excluded.review_id,workout_json=excluded.workout_json,created_at=excluded.created_at",
+            )
+            .run(
+              context.day,
+              id,
+              JSON.stringify(proposal.after),
+              this.now().toISOString(),
+            );
         return { saved: true };
       })
       .immediate();

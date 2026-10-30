@@ -10,16 +10,15 @@ import {
   formatPace,
   planKm,
   minimumRunKm,
-  formatWorkoutDistance,
   volumeMilestones,
-  workoutKm,
 } from "@/shared/training-plan";
 import { sameWorkout } from "@/shared/workout-identity";
 import { Button } from "@/components/atoms/Button";
-import { PlanSteps } from "@/components/molecules/PlanSteps";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
-import { Icon } from "@/components/atoms/Icon";
-import { CopyWorkoutButton } from "@/components/molecules/CopyWorkoutButton";
+
+import { WeeklySchedule } from "./WeeklySchedule";
+import { buildWeekSchedule } from "@/shared/weekly-schedule";
+import { DEFAULT_WEEK_PREFERENCES } from "@/shared/types/schedule";
 
 function offset(day: string, days: number) {
   const d = new Date(`${day}T12:00:00Z`);
@@ -61,16 +60,6 @@ function matchesGeneratedWeek(
     return false;
   }
 }
-const names = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
-
 export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   const router = useRouter(),
     initial = data.previewPlan;
@@ -120,15 +109,6 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   } catch {
     /* Shown next to settings. */
   }
-  const original = preview?.workouts.find((w) => w.dayOffset === selectedDay);
-  const override = original
-    ? data.overrides.find(
-        (o) =>
-          o.day === offset(start, selectedDay) &&
-          sameWorkout(o.before, original),
-      )
-    : undefined;
-  const workout = override ? override.workout : original;
   const saved =
     preview &&
     savedKey ===
@@ -141,7 +121,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       );
 
   return (
-    <section className="screen-stack" aria-label="Weekly running planner">
+    <section className="screen-stack" aria-label="Weekly workout planner">
       {initial &&
         initial.start === start &&
         initial.weekNumber === week &&
@@ -332,107 +312,24 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         </p>
       )}
       {preview && (
-        <>
-          <div
-            className="week-strip"
-            role="group"
-            aria-label="Choose a workout day"
-          >
-            {names.map((name, i) => {
-              const run = preview.workouts.find((w) => w.dayOffset === i),
-                edit = data.overrides.find(
-                  (o) =>
-                    o.day === offset(start, i) &&
-                    run &&
-                    sameWorkout(o.before, run),
-                ),
-                effective = edit ? edit.workout : run;
-              return (
-                <button
-                  type="button"
-                  key={name}
-                  aria-label={`${name}${effective ? ` · ${effective.title}` : " · no run"}`}
-                  aria-pressed={selectedDay === i}
-                  onClick={() => setSelectedDay(i)}
-                >
-                  <span>{name.slice(0, 3)}</span>
-                  <strong>
-                    {new Date(`${offset(start, i)}T12:00:00Z`).getUTCDate()}
-                  </strong>
-                  <small>
-                    {effective
-                      ? `${workoutKm(effective, preview.easyPace).toFixed(1)}k`
-                      : "Off"}
-                  </small>
-                  <span className={`day-dot ${effective ? "has-run" : ""}`} />
-                </button>
-              );
-            })}
-          </div>
-          <article
-            className="surface selected-workout"
-            aria-labelledby="selected-workout-heading"
-          >
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">
-                  {names[selectedDay]} · {offset(start, selectedDay)}
-                </span>
-                <h2 id="selected-workout-heading">
-                  {workout ? workout.title : "No run scheduled"}
-                </h2>
-              </div>
-              <span className="workout-symbol">
-                <Icon name={workout ? "plan" : "heart"} />
-              </span>
-            </div>
-            {override && (
-              <p className="inline-notice small-text">
-                Approved daily adjustment. Weekly totals retain the reviewed
-                baseline.
-              </p>
-            )}
-            {workout ? (
-              <>
-                <div className="workout-meta">
-                  <span>
-                    {formatWorkoutDistance(workout, preview.easyPace)} total
-                  </span>
-                  <span>Distance targets for Garmin</span>
-                </div>
-                <PlanSteps steps={workout.steps} />
-                <CopyWorkoutButton workout={workout} />
-              </>
-            ) : (
-              <p className="muted rest-message">
-                {override
-                  ? "Rest from running today. This change has been approved."
-                  : selectedDay === 6
-                    ? "A day to recover. Your next running week starts on Monday."
-                    : "Follow your other scheduled training and leave room for recovery."}
-              </p>
-            )}
-          </article>
-          <details className="surface supporting-details">
-            <summary>How this week fits your other training</summary>
-            <p className="muted">
-              Monday and Wednesday Hyrox; Tuesday and Thursday Zwift; Saturday
-              cycling.{" "}
-              {preview.workouts.length >= 5
-                ? "Wednesday includes a short run; separate the sessions and allow recovery. "
-                : ""}
-              {preview.workouts.length >= 6
-                ? "Friday becomes a running day: drop Friday Hyrox and review the long Saturday ride. "
-                : "Friday running is off by default. "}
-              Higher stages need longer lunch windows. Sunday remains a rest
-              day.
-            </p>
-            <p className="muted small-text">
-              The 30 stages are milestone ceilings, not an automatic 30-week
-              timeline. Progression depends on completed training and recovery.
-            </p>
-          </details>
-        </>
+        <WeeklySchedule
+          key={start}
+          plan={preview}
+          calendar={
+            saved && data.previewCalendar?.start === start
+              ? data.previewCalendar
+              : buildWeekSchedule(
+                  preview,
+                  data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
+                  data.preferences,
+                )
+          }
+          initialWeek={data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES}
+          saved={!!saved}
+          today={data.today}
+          selectedDay={selectedDay}
+          onSelect={setSelectedDay}
+        />
       )}
     </section>
   );

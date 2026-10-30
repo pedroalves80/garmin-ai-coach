@@ -8,6 +8,9 @@ import { assessProgression } from "../training/progression";
 import type { CoachAction, CoachKind } from "../../shared/types/coach";
 import type { RunWorkout } from "../../shared/types/metrics";
 import { minimumRunKm, workoutKm } from "../../shared/training-plan";
+import { ScheduleRepository } from "../training/schedule-repository";
+import { trainingCalendar, moveRunningDay } from "../training/calendar";
+import type { ScheduleChange } from "../../shared/types/schedule";
 
 export function coachContext(sqlite: Database.Database, now: Date) {
   const day = calendarDate(now),
@@ -22,17 +25,33 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     .checkIns()
     .filter((c) => c.day <= day && c.day >= shiftDay(day, -6));
   const plan = plans.find((p) => p.start === monday) ?? null;
-  const workout =
+  const originalWorkout =
     plan?.workouts.find((w) => shiftDay(plan.start, w.dayOffset) === day) ??
     null;
   const lastSync = garmin.status()?.lastCompletedAt ?? null;
   const weeks = weeklyMetrics(activities, now);
-  const accepted = sqlite
-    .prepare("SELECT review_id,workout_json FROM coach_overrides WHERE day=?")
-    .get(day) as { review_id: string; workout_json: string } | undefined;
-  const effectiveWorkout = accepted
-    ? (JSON.parse(accepted.workout_json) as RunWorkout | null)
-    : workout;
+  const acceptedRow = sqlite
+    .prepare(
+      "SELECT review_id FROM day_schedule_overrides WHERE day=? UNION ALL SELECT review_id FROM coach_overrides WHERE day=? AND NOT EXISTS(SELECT 1 FROM day_schedule_overrides WHERE day=?) LIMIT 1",
+    )
+    .get(day, day, day) as { review_id: string | null } | undefined;
+  const accepted = acceptedRow?.review_id
+    ? { review_id: acceptedRow.review_id }
+    : undefined;
+  const scheduleRepository = new ScheduleRepository(sqlite);
+  const calendar = plan
+    ? trainingCalendar(sqlite, plan, activities, now)
+    : null;
+  const todaySchedule = calendar?.days.find((d) => d.day === day) ?? null;
+  const todayRun = todaySchedule?.sessions.find(
+    (s) => s.session.sport === "running",
+  )?.session;
+  const workout: RunWorkout | null = todaySchedule
+    ? todayRun?.sport === "running"
+      ? todayRun.workout
+      : null
+    : originalWorkout;
+  const effectiveWorkout = workout;
   const todayActivities = activities.filter(
     (a) => calendarDate(new Date(a.startedAt)) === day,
   );
@@ -58,7 +77,9 @@ export function coachContext(sqlite: Database.Database, now: Date) {
         ? "A run is already recorded today. Do not add another run."
         : accepted
           ? "Today's adjustment is already approved: follow the adjusted workout or rest; do not restore quality or distance."
-          : "No saved run today. Save a reviewed plan before requesting workout changes.",
+          : plan
+            ? "No run is scheduled today. Review supporting training without adding a run."
+            : "Save a reviewed week before requesting workout changes.",
     );
   } else if (stale || !todayCheckIn) {
     allowed = ["follow", "rest"];
@@ -67,7 +88,15 @@ export function coachContext(sqlite: Database.Database, now: Date) {
         ? "Sync Garmin before changing today's workout; the training data is missing or over two days old."
         : "Log today's check-in before adjusting the workout.",
     );
-  } else if (todayCheckIn.fatigue >= 4 || todayCheckIn.soreness >= 4) {
+  }
+  if (
+    !pain &&
+    workout &&
+    !ranToday &&
+    !stale &&
+    todayCheckIn &&
+    (todayCheckIn.fatigue >= 4 || todayCheckIn.soreness >= 4)
+  ) {
     allowed = ["shorten", "rest"];
     constraints.push(
       "High fatigue or soreness: reduce today's run or rest; no quality work.",
@@ -84,6 +113,62 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     if (km < minimumRunKm - 1e-8)
       allowed = allowed.filter((action) => action !== "easy");
   }
+  const canSchedule =
+    !!plan &&
+    !!todaySchedule &&
+    todaySchedule.dayOffset !== 6 &&
+    !stale &&
+    !!todayCheckIn;
+  const moves: Partial<Record<CoachAction, ScheduleChange[]>> = {};
+  if (canSchedule && !pain) {
+    const secondary = todaySchedule.sessions.find(
+      (s) => s.session.sport !== "running" && s.status === "planned",
+    );
+    const fatigue = Math.max(todayCheckIn!.fatigue, todayCheckIn!.soreness);
+    if (secondary && (!workout || ranToday || fatigue < 4))
+      allowed.push("skip_secondary");
+    if (
+      !accepted &&
+      secondary?.session.sport === "hyrox" &&
+      fatigue < 4 &&
+      todaySchedule.recorded.length < 2 &&
+      !todaySchedule.recorded.some((r) => r.sport === "cycling")
+    )
+      allowed.push("cycle");
+    if (workout && !accepted && !ranToday && fatigue < 4) {
+      for (let to = todaySchedule.dayOffset + 1; to < 6; to++) {
+        try {
+          const action = `move_${to}` as CoachAction;
+          moves[action] = moveRunningDay(
+            sqlite,
+            plan!,
+            todaySchedule.dayOffset,
+            to,
+            activities,
+            now,
+          );
+          allowed.push(action);
+        } catch {
+          /* No legal destination. */
+        }
+      }
+    }
+  }
+  if (todaySchedule && todaySchedule.recorded.length >= 2) {
+    allowed = pain ? ["rest"] : ["follow", "rest"];
+    constraints.push(
+      "Two workouts are already recorded today. Do not add or reschedule more training today.",
+    );
+  }
+  if (todaySchedule?.dayOffset === 6) {
+    allowed = ["follow"];
+    constraints.push(
+      "Sunday is always complete rest. Do not schedule any workout.",
+    );
+  }
+  constraints.push(
+    "Running is the priority. Cycling never replaces a run. At most two workouts daily. Weekday lunch <=120 min; later sessions and Saturday have no availability cap. Hyrox is only Monday, Wednesday, Friday. Volume increases require a separately reviewed week.",
+  );
   const health = sqlite
     .prepare(
       "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
@@ -94,8 +179,10 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     day,
     workoutPreferences: { stepTarget: "distance", minimumRunKm },
     lastSync,
-    schedule:
-      "Mon run + Hyrox; Tue run + cycling; Wed Hyrox; Thu run + cycling; Fri optional Hyrox; Sat long run + cycling; Sun rest. Saved plans may add runs at later stages.",
+    schedule: calendar,
+    preferences: scheduleRepository.preferences(),
+    hyroxAttendance: scheduleRepository.week(monday).hyrox,
+    movableRunDays: Object.keys(moves),
     weeks: weeks.map((w) =>
       Object.fromEntries(
         Object.entries(w).map(([k, v]) => [
@@ -165,10 +252,15 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     day,
     allowed,
     constraints,
+    todaySchedule,
+    moves,
+    canSchedule,
+    preferences: scheduleRepository.preferences(),
     canAdjust:
       !!workout &&
       !!effectiveWorkout &&
       !ranToday &&
+      (todaySchedule?.recorded.length ?? 0) < 2 &&
       !stale &&
       (!!todayCheckIn || pain),
   };

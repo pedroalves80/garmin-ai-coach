@@ -6,6 +6,10 @@ import { planSettingsSchema } from "@/server/training/validation";
 import { createTrainingPlan, planKm } from "@/shared/training-plan";
 import { calendarDate, mondayOf, shiftDay } from "@/server/training/dates";
 import { trainingDashboardData } from "@/server/training/dashboard";
+import {
+  validateRunningSchedule,
+  ScheduleRuleError,
+} from "@/shared/weekly-schedule";
 
 export async function POST(request: Request) {
   const denied = authorizeMutation(request);
@@ -46,6 +50,7 @@ export async function POST(request: Request) {
       targetKm,
     );
     const repository = new TrainingRepository(getDatabase());
+    validateRunningSchedule(plan);
     // Higher milestones are previews. Approval advances only one stage at a time.
     const previous = repository
       .plans()
@@ -84,11 +89,13 @@ export async function POST(request: Request) {
     }
     repository.savePlan(plan);
     return NextResponse.json({ saved: true, plannedKm: planKm(plan) });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
       {
         error:
-          "The selected paces leave insufficient distance for the workout steps.",
+          error instanceof ScheduleRuleError
+            ? error.message
+            : "The selected settings cannot fit the workout steps.",
       },
       { status: 400 },
     );

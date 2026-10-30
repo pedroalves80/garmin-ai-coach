@@ -162,7 +162,10 @@ test("no saved run, completed running, missing check-in and stale sync block add
     )
     .run(now.toISOString());
   assert.equal(coachContext(next.db, now).canAdjust, false);
-  assert.deepEqual(coachContext(next.db, now).allowed, ["follow"]);
+  assert.deepEqual(coachContext(next.db, now).allowed, [
+    "follow",
+    "skip_secondary",
+  ]);
   next.db.close();
 });
 

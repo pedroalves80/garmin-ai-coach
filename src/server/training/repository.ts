@@ -39,6 +39,9 @@ export class TrainingRepository {
         .prepare("DELETE FROM coach_overrides WHERE day>=? AND day<?")
         .run(plan.start, shiftDay(plan.start, 7));
       this.sqlite
+        .prepare("DELETE FROM day_schedule_overrides WHERE day>=? AND day<?")
+        .run(plan.start, shiftDay(plan.start, 7));
+      this.sqlite
         .prepare(
           "INSERT INTO training_plans(week_start,plan_json,created_at) VALUES (?,?,?) ON CONFLICT(week_start) DO UPDATE SET plan_json=excluded.plan_json",
         )

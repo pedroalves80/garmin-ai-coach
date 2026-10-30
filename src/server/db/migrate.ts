@@ -81,6 +81,10 @@ export function migrateDatabase(sqlite: Database.Database) {
     workout_json TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS training_preferences(id INTEGER PRIMARY KEY CHECK(id=1),settings_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS week_preferences(week_start TEXT PRIMARY KEY,settings_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS day_schedule_overrides(day TEXT PRIMARY KEY,sessions_json TEXT NOT NULL,review_id TEXT REFERENCES coach_reviews(id));
+  CREATE TABLE IF NOT EXISTS automatic_coach(day TEXT PRIMARY KEY,context_hash TEXT NOT NULL,attempted_at TEXT NOT NULL,error TEXT);
 `),
   )();
 }

@@ -16,21 +16,35 @@ export function CoachPanel() {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/coach", { cache: "no-store", signal: controller.signal })
-      .then(async (r) => {
-        if (!r.ok)
+    async function load() {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const response = await fetch("/api/coach", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok)
           throw new Error("Coach status unavailable. Reload to retry.");
-        const data: CoachStatus = await r.json();
+        const data: CoachStatus = await response.json();
         setStatus(data);
-        setSelected(data.reviews[0] ?? null);
-      })
-      .catch((error) => {
+        setSelected((current) => current ?? data.reviews[0] ?? null);
+      } catch (error) {
         if (!controller.signal.aborted) {
-          setMessage(error.message);
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Coach status unavailable.",
+          );
           setFailed(true);
         }
-      });
-    return () => controller.abort();
+      }
+    }
+    void load();
+    const timer = setInterval(() => void load(), 30000);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
   }, []);
   async function request(
     body:
@@ -85,8 +99,8 @@ export function CoachPanel() {
         </span>
         <h2 id="coach-heading">What would help today?</h2>
         <p className="muted">
-          Review your week or decide today’s run using your saved plan, Garmin
-          training and recovery check-ins.
+          Review your whole week or decide today’s sessions using your saved
+          plan, Garmin training and recovery check-ins.
         </p>
         <div className="action-row coach-actions">
           <Button
@@ -103,12 +117,23 @@ export function CoachPanel() {
             Review my week
           </Button>
         </div>
+        {status?.automatic && (
+          <p className="muted small-text">
+            {status.automatic.enabled
+              ? status.automatic.attemptedAt
+                ? "Today’s automatic review has been attempted. Request a fresh review if your data changed."
+                : "Automatic review is waiting for a saved current week, fresh sync and today’s check-in. Sunday stays off."
+              : "Automatic reviews are off in Settings."}
+            {status.automatic.error && ` ${status.automatic.error}`}
+          </p>
+        )}
         <details className="supporting-details coach-privacy">
           <summary>Privacy & request limits</summary>
           <p className="muted small-text">
             Only compact training and health summaries go to OpenAI. GPS,
-            activity names and check-in notes stay local. Reviews run when you
-            ask.
+            activity names and check-in notes stay local. With automatic
+            coaching enabled, one daily review runs after your check-in and
+            fresh sync. Changes always need approval.
           </p>
           {status && (
             <p className="muted small-text">

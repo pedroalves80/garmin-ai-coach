@@ -1,7 +1,20 @@
 import type { RunWorkout } from "./metrics";
+import type { ScheduleChange } from "./schedule";
 
 export type CoachKind = "today" | "weekly";
-export type CoachAction = "follow" | "shorten" | "easy" | "rest";
+export type CoachAction =
+  | "follow"
+  | "shorten"
+  | "easy"
+  | "rest"
+  | "cycle"
+  | "skip_secondary"
+  | "move_0"
+  | "move_1"
+  | "move_2"
+  | "move_3"
+  | "move_4"
+  | "move_5";
 export type CoachReview = {
   id: string;
   kind: CoachKind;
@@ -15,6 +28,7 @@ export type CoachReview = {
   reason: string;
   constraints: string[];
   proposal: { before: RunWorkout; after: RunWorkout | null } | null;
+  scheduleChanges?: ScheduleChange[];
   usage: { inputTokens: number; outputTokens: number };
 };
 export type CoachStatus = {
@@ -26,4 +40,9 @@ export type CoachStatus = {
   monthlyLimit: number;
   reviews: CoachReview[];
   accepted: { day: string; reviewId: string } | null;
+  automatic?: {
+    enabled: boolean;
+    attemptedAt: string | null;
+    error: string | null;
+  };
 };

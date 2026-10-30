@@ -8,6 +8,9 @@ import { TodayOverview } from "@/components/organisms/TodayOverview";
 import { TrainingWorkspace } from "@/components/organisms/TrainingWorkspace";
 import { ProgressWorkspace } from "@/components/organisms/ProgressWorkspace";
 import { CoachPanel } from "@/components/organisms/CoachPanel";
+import { TrainingPreferencesForm } from "@/components/organisms/TrainingPreferencesForm";
+import { ScheduleRepository } from "@/server/training/schedule-repository";
+import { getDatabase } from "@/server/db/client";
 import { GarminConnectionPanel } from "@/components/organisms/GarminConnectionPanel";
 
 type View = "today" | "plan" | "coach" | "progress" | "settings";
@@ -15,11 +18,11 @@ const pages = {
   today: {
     eyebrow: "YOUR DAILY OVERVIEW",
     title: "Your training, today.",
-    description: "Your next run, recovery and week so far.",
+    description: "Your sessions, recovery and week so far.",
   },
   plan: {
     eyebrow: "MAKE A LITTLE ROOM FOR PROGRESS",
-    title: "Your running week.",
+    title: "Your training week.",
     description: "Pick a day. See the steps. Make it yours in Garmin.",
   },
   coach: {
@@ -51,6 +54,9 @@ async function Content({ view }: { view: View }) {
           lastSync={data.lastSync?.lastCompletedAt ?? null}
           lastError={data.lastSync?.lastError ?? null}
         />
+        <TrainingPreferencesForm
+          initial={new ScheduleRepository(getDatabase()).preferences()}
+        />
         <section className="surface">
           <span className="eyebrow">YOUR PERSONAL WORKSPACE</span>
           <h2>Built around your training.</h2>
@@ -62,8 +68,9 @@ async function Content({ view }: { view: View }) {
             <summary>Data & AI privacy</summary>
             <p className="muted small-text">
               Garmin data is stored on this server. AI reviews send compact
-              training and health summaries to OpenAI only when you ask. GPS,
-              activity names and check-in notes stay local.
+              training and health summaries to OpenAI for manual reviews and the
+              optional daily automatic recommendation. GPS, activity names and
+              check-in notes stay local.
             </p>
           </details>
         </section>

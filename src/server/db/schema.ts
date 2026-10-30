@@ -79,3 +79,22 @@ export const coachOverrides = sqliteTable("coach_overrides", {
   workoutJson: text("workout_json").notNull(),
   createdAt: text("created_at").notNull(),
 });
+export const trainingPreferences = sqliteTable("training_preferences", {
+  id: integer("id").primaryKey(),
+  settingsJson: text("settings_json").notNull(),
+});
+export const weekPreferences = sqliteTable("week_preferences", {
+  weekStart: text("week_start").primaryKey(),
+  settingsJson: text("settings_json").notNull(),
+});
+export const dayScheduleOverrides = sqliteTable("day_schedule_overrides", {
+  day: text("day").primaryKey(),
+  sessionsJson: text("sessions_json").notNull(),
+  reviewId: text("review_id").references(() => coachReviews.id),
+});
+export const automaticCoach = sqliteTable("automatic_coach", {
+  day: text("day").primaryKey(),
+  contextHash: text("context_hash").notNull(),
+  attemptedAt: text("attempted_at").notNull(),
+  error: text("error"),
+});

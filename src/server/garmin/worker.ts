@@ -3,6 +3,8 @@ import { getConfig } from "../config";
 import { getDatabase } from "../db/client";
 import { GarminScheduler, autoSyncStatus } from "./scheduler";
 import { syncGarminData } from "./service";
+import { AutomaticCoach } from "../coach/automatic";
+import { coachService } from "../coach/runtime";
 
 async function main() {
   const config = getConfig();
@@ -23,6 +25,7 @@ async function main() {
   }
   const db = getDatabase(),
     controller = new AbortController();
+  const coach = new AutomaticCoach(db, coachService(), !!config.OPENAI_API_KEY);
   const scheduler = new GarminScheduler(
     db,
     (signal) => syncGarminData(false, signal),
@@ -37,13 +40,18 @@ async function main() {
     if (pending || stopping) return;
     pending = scheduler
       .tick(controller.signal)
-      .then((result) => {
+      .then(async (result) => {
         if (result === "synced")
           console.info("Automatic Garmin sync completed.");
         if (result === "failed")
           console.warn(
             "Automatic Garmin sync failed; the next attempt is scheduled. See the Garmin panel.",
           );
+        if (!stopping) {
+          const review = await coach.tick();
+          if (review === "reviewed")
+            console.info("Daily coach recommendation ready for review.");
+        }
       })
       .catch(() => {
         console.error(

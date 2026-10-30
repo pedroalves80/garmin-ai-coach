@@ -9,6 +9,8 @@ import type {
   ActivityMeasurement,
   TrainingPlan,
 } from "../../shared/types/metrics";
+import { ScheduleRepository } from "./schedule-repository";
+import { trainingCalendar } from "./calendar";
 
 export function workoutCompletion(
   plan: TrainingPlan,
@@ -77,6 +79,20 @@ export function trainingDashboardData(now = new Date()) {
       (w) => shiftDay(currentPlan.start, w.dayOffset) === today,
     ) ?? null;
   const todayOverride = overrides.find((o) => o.day === today);
+  const scheduleRepository = new ScheduleRepository(sqlite);
+  const calendar = currentPlan
+    ? trainingCalendar(sqlite, currentPlan, activities, now)
+    : null;
+  const todaySessions = calendar?.days.find((d) => d.day === today) ?? null;
+  const effectiveRuns =
+    calendar?.days.flatMap((d) =>
+      d.sessions.flatMap((s) =>
+        s.session.sport === "running" ? [s.session.workout] : [],
+      ),
+    ) ?? [];
+  const calendarRun = todaySessions?.sessions.find(
+    (s) => s.session.sport === "running",
+  )?.session;
   return {
     today,
     todayRunning: {
@@ -87,7 +103,26 @@ export function trainingDashboardData(now = new Date()) {
         0,
       ),
     },
-    todayWorkout: todayOverride ? todayOverride.workout : scheduled,
+    todayWorkout: todaySessions
+      ? calendarRun?.sport === "running"
+        ? calendarRun.workout
+        : null
+      : todayOverride
+        ? todayOverride.workout
+        : scheduled,
+    todaySessions,
+    calendar,
+    previewCalendar: previewPlan
+      ? trainingCalendar(sqlite, previewPlan, activities, now)
+      : null,
+    preferences: scheduleRepository.preferences(),
+    weekSettings: scheduleRepository.weeks(),
+    weekPreferences: scheduleRepository.week(
+      previewPlan?.start ?? shiftDay(monday, 7),
+    ),
+    scheduleChanges: scheduleRepository.changes(
+      previewPlan?.start ?? shiftDay(monday, 7),
+    ),
     monday,
     weeks,
     averageKm: average,
@@ -105,7 +140,11 @@ export function trainingDashboardData(now = new Date()) {
     overrides,
     plannedKm: currentPlan ? planKm(currentPlan) : null,
     completion: currentPlan
-      ? workoutCompletion(currentPlan, activities, today)
+      ? workoutCompletion(
+          { ...currentPlan, workouts: effectiveRuns },
+          activities,
+          today,
+        )
       : [],
     progression: assessProgression({
       now,

@@ -3,6 +3,8 @@ import type { DashboardData } from "@/server/dashboard/data";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import { MetricCard } from "@/components/molecules/MetricCard";
 import { Icon } from "@/components/atoms/Icon";
+import { SessionCard } from "../molecules/SessionCard";
+import { DailyCoachSummary } from "./DailyCoachSummary";
 import { RecoveryCheckIn } from "./RecoveryCheckIn";
 import {
   formatWorkoutDistance,
@@ -88,6 +90,37 @@ export function TodayOverview({
           </svg>
         </div>
       </section>
+      {training.todaySessions && (
+        <section className="surface">
+          <div className="section-heading">
+            <h2>Your sessions today</h2>
+            <Link className="text-link" href="/plan">
+              Your week <Icon name="arrow" />
+            </Link>
+          </div>
+          <div className="day-sessions">
+            {training.todaySessions.sessions.map((entry, i) => (
+              <SessionCard
+                compact
+                key={i}
+                entry={entry}
+                easyPace={training.currentPlan?.easyPace}
+              />
+            ))}
+          </div>
+          {!training.todaySessions.sessions.length && (
+            <p className="muted">
+              No workouts scheduled. Sunday always stays a rest day.
+            </p>
+          )}
+          {training.todaySessions.warnings.map((warning, i) => (
+            <p className="error-text small-text" key={i}>
+              {warning}
+            </p>
+          ))}
+        </section>
+      )}
+      <DailyCoachSummary today={training.today} />
       <div className="metric-grid">
         <MetricCard
           label="Running this week"
