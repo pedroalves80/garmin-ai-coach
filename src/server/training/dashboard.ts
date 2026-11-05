@@ -223,6 +223,7 @@ export function trainingDashboardData(now = new Date()) {
     previewCalendar: previewPlan
       ? trainingCalendar(sqlite, previewPlan, activities, now)
       : null,
+    availability: scheduleRepository.availability(),
     preferences: scheduleRepository.preferences(),
     weekSettings: scheduleRepository.weeks(),
     weekPreferences: scheduleRepository.week(

@@ -1,3 +1,6 @@
+import { ScheduleRuleError } from "../../shared/weekly-schedule";
+import type { TrainingSession } from "../../shared/types/schedule";
+import { calendarDate, mondayOf } from "./dates";
 import type Database from "better-sqlite3";
 import type {
   DailyCheckIn,
@@ -32,8 +35,28 @@ export class TrainingRepository {
       .all() as { plan_json: string }[];
     return rows.map((row) => savedPlanSchema.parse(JSON.parse(row.plan_json)));
   }
-  savePlan(plan: TrainingPlan) {
+  savePlan(plan: TrainingPlan, now = new Date()) {
     this.sqlite.transaction(() => {
+      const rows = this.sqlite
+        .prepare("SELECT day,sessions_json FROM day_schedule_overrides")
+        .all() as { day: string; sessions_json: string }[];
+      const crossWeek = rows.some(
+        (row) =>
+          row.day >= calendarDate(now) &&
+          (JSON.parse(row.sessions_json) as TrainingSession[]).some(
+            (session) => {
+              const origin = session.id?.slice(0, 10);
+              if (!origin || !/^\d{4}-\d{2}-\d{2}$/.test(origin)) return false;
+              const from = mondayOf(origin),
+                to = mondayOf(row.day);
+              return from !== to && [from, to].includes(plan.start);
+            },
+          ),
+      );
+      if (crossWeek)
+        throw new ScheduleRuleError(
+          "A session is moved between this week and another reviewed week. Move it back or undo the change before replacing either week.",
+        );
       // A newly reviewed week supersedes any daily edits to its previous snapshot.
       this.sqlite
         .prepare("DELETE FROM coach_overrides WHERE day>=? AND day<?")

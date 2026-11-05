@@ -1,3 +1,4 @@
+import { recoveryWarnings } from "../../shared/schedule-editing";
 import { CommitmentRepository } from "../training/commitment-repository";
 import { eventOnlyPlan, calendarGate } from "../../shared/commitment-calendar";
 import { createHash } from "node:crypto";
@@ -172,6 +173,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     !stale &&
     !!todayCheckIn;
   const moves: Partial<Record<CoachAction, ScheduleChange[]>> = {};
+  const moveWarnings: Partial<Record<CoachAction, string[]>> = {};
   if (canSchedule && !pain && !workout?.race) {
     const secondary = todaySchedule.sessions.find(
       (s) => s.session.sport !== "running" && s.status === "planned",
@@ -182,6 +184,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     if (
       !accepted &&
       secondary?.session.sport === "hyrox" &&
+      !todaySchedule.unavailableSlots?.includes("later") &&
       fatigue < 4 &&
       todaySchedule.recorded.length < 2 &&
       !todaySchedule.recorded.some((r) => r.sport === "cycling")
@@ -191,13 +194,40 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       for (let to = todaySchedule.dayOffset + 1; to < 6; to++) {
         try {
           const action = `move_${to}` as CoachAction;
-          moves[action] = moveRunningDay(
+          const preferred =
+            todayRun?.slot === "morning" || todayRun?.slot === "later"
+              ? todayRun.slot
+              : "lunch";
+          for (const slot of [
+            ...new Set([preferred, "lunch", "morning", "later"] as const),
+          ]) {
+            try {
+              moves[action] = moveRunningDay(
+                sqlite,
+                plan!,
+                todaySchedule.dayOffset,
+                to,
+                activities,
+                now,
+                slot,
+              );
+              break;
+            } catch {
+              /* Try another available window. */
+            }
+          }
+          if (!moves[action]) continue;
+          const movedCalendar = trainingCalendar(
             sqlite,
             plan!,
-            todaySchedule.dayOffset,
-            to,
             activities,
             now,
+            undefined,
+            { changes: moves[action] },
+          );
+          moveWarnings[action] = recoveryWarnings(
+            movedCalendar.days,
+            moves[action]!.map((c) => c.day),
           );
           allowed.push(action);
         } catch {
@@ -381,7 +411,12 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       calendar && plan ? reviewPlannedWeek(calendar, plan, load) : null,
     preferences: scheduleRepository.preferences(),
     hyroxAttendance: scheduleRepository.week(monday).hyrox,
+    unavailableTrainingWindows: scheduleRepository
+      .availability()
+      .filter((b) => b.day >= monday && b.day < shiftDay(monday, 14))
+      .map(({ day, slots }) => ({ day, slots })),
     movableRunDays: Object.keys(moves),
+    moveRecoveryWarnings: moveWarnings,
     weeks: weeks.map((w) =>
       Object.fromEntries(
         Object.entries(w).map(([k, v]) => [
@@ -438,7 +473,14 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   };
   // The private plan fingerprint also invalidates approvals when another day is edited.
   const hash = createHash("sha256")
-    .update(JSON.stringify({ payload, plan, commitments }))
+    .update(
+      JSON.stringify({
+        payload,
+        plan,
+        commitments,
+        scheduleRevision: scheduleRepository.revisionData(),
+      }),
+    )
     .digest("hex");
   return {
     payload,

@@ -123,3 +123,20 @@ export const trainingPauses = sqliteTable("training_pauses", {
   start: text("start").notNull(),
   itemJson: text("item_json").notNull(),
 });
+
+export const trainingAvailability = sqliteTable("training_availability", {
+  day: text("day").primaryKey(),
+  slotsJson: text("slots_json").notNull(),
+  reason: text("reason").notNull(),
+});
+export const scheduleEditHistory = sqliteTable("schedule_edit_history", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  summary: text("summary").notNull(),
+  reason: text("reason"),
+  daysJson: text("days_json").notNull(),
+  beforeJson: text("before_json").notNull(),
+  afterJson: text("after_json").notNull(),
+  contextJson: text("context_json").notNull(),
+  undoneAt: text("undone_at"),
+});

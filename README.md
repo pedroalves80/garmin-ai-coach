@@ -32,6 +32,16 @@ The light interface uses dark text and green accents. Desktop navigation is a si
 
 Old section bookmarks such as `/#connection` redirect to the corresponding screen. A shared status observer refreshes the visible screen when Garmin imports change, without making AI requests. Workout targets, copy actions, check-in saves and approval rules remain available across the new screens.
 
+## Changing a workout
+
+Open **Change workout** in Today or on a saved day in Plan. Choose **Move**, **Swap** or **Skip**, a reason, and (for moves) a date and morning/lunch/later window. **Preview change** shows the affected sessions, weekly kilometres and recovery conflicts. Only **Apply change** saves anything. Workout steps and numeric pace/HR/power targets are preserved; Garmin Connect scheduling must still be updated manually.
+
+**Find a suitable day** ranks valid dates locally with no AI request. The coach also sees availability and movement recovery warnings. It never applies a proposed adjustment without approval.
+
+Under **Availability**, block a window or whole day. Uncompleted sessions in blocked windows are excluded without adding their distance elsewhere. Clearing a block may restore those original sessions; review the preview. Recorded activities remain in history. Past unrecorded prescriptions are labelled **Unconfirmed**, rather than assumed missed.
+
+**Recent changes** provides guarded undo. Undo cannot overwrite a newer edit, a recorded workout, a changed reviewed week, or changed recovery/commitment context. All affected rows save atomically, and a new activity or edit invalidates an open preview. Cross-week changes require saved weeks and respect each reviewed running budget and key-session allowance. Move a cross-week session back or undo it before replacing either reviewed week.
+
 Garmin sync uses the official [Personal API Swagger](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/) (v1.0.0, checked 2026-10-29):
 
 - `GET /activitylist-service/activities/search/activities` with `start`, `limit`, `startDate`, `endDate`; distances are meters and durations are seconds.

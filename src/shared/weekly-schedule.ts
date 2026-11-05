@@ -139,7 +139,7 @@ export function validateDaySessions(
     new Set(sessions.map((s) => s.slot)).size !== sessions.length
   )
     throw new ScheduleRuleError(
-      "A day has at most one lunch session and one later session.",
+      "A day has at most two workouts, in distinct morning, lunch or later windows.",
     );
   if (new Set(sessions.map((s) => s.sport)).size !== sessions.length)
     throw new ScheduleRuleError(
@@ -155,7 +155,7 @@ export function validateDaySessions(
       );
     if (
       session.sport === "running" &&
-      ((session.slot !== "lunch" &&
+      ((!["morning", "lunch", "later"].includes(session.slot) &&
         !(
           session.slot === "event" &&
           !!authorisedRace &&
@@ -169,7 +169,7 @@ export function validateDaySessions(
         session.workout.dayOffset !== dayOffset)
     )
       throw new ScheduleRuleError(
-        "Runs use the lunch slot on their selected day.",
+        "Runs use a morning, lunch or later window on their selected day.",
       );
     const minutes =
       session.sport === "running"
@@ -251,8 +251,17 @@ export function buildWeekSchedule(
             ? { ...session, workout: withCyclingMinimum(session.workout) }
             : session,
         );
+        sessions = [...sessions].sort(
+          (a, b) =>
+            ["morning", "lunch", "later", "event"].indexOf(a.slot) -
+            ["morning", "lunch", "later", "event"].indexOf(b.slot),
+        );
         validateDaySessions(offset, sessions, plan.easyPace);
       }
+      sessions = sessions.map((session) => ({
+        ...session,
+        id: session.id ?? `${day}:${session.sport}`,
+      }));
       const recorded = records
         .filter((r) => r.day === day)
         .map(({ sport, minutes, km }) => ({ sport, minutes, km }));

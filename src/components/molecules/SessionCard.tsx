@@ -16,10 +16,12 @@ export function SessionCard({
   entry,
   easyPace = defaultEasyPace,
   compact = false,
+  unconfirmed = false,
 }: {
   entry: SessionState;
   easyPace?: number;
   compact?: boolean;
+  unconfirmed?: boolean;
 }) {
   const { session, status } = entry;
   const [message, setMessage] = useState("");
@@ -32,19 +34,27 @@ export function SessionCard({
           <span className="eyebrow">
             {session.slot === "event"
               ? `Race${session.sport === "running" && session.workout.race?.startTime ? ` · ${session.workout.race.startTime}` : ""}`
-              : session.slot === "lunch"
-                ? "First session"
-                : "Later session"}{" "}
+              : session.slot === "morning"
+                ? "Morning"
+                : session.slot === "lunch"
+                  ? "Lunch"
+                  : "Later"}{" "}
             · {session.sport}
           </span>
           <h3>{title}</h3>
         </div>
-        <StatusBadge tone={status === "recorded" ? "success" : "info"}>
-          {status === "planned" &&
-          session.sport === "hyrox" &&
-          session.attendance === "undecided"
-            ? "Tentative"
-            : status}
+        <StatusBadge
+          tone={
+            status === "recorded" ? "success" : unconfirmed ? "warning" : "info"
+          }
+        >
+          {unconfirmed && status !== "recorded"
+            ? "Unconfirmed"
+            : status === "planned" &&
+                session.sport === "hyrox" &&
+                session.attendance === "undecided"
+              ? "Tentative"
+              : status}
         </StatusBadge>
       </div>
       {status === "blocked" ? (

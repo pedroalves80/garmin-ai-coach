@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon";
 import { SessionCard } from "../molecules/SessionCard";
 import { DailyCoachSummary } from "./DailyCoachSummary";
 import { RecoveryCheckIn } from "./RecoveryCheckIn";
+import { ScheduleAdjustments } from "./ScheduleAdjustments";
 import {
   formatWorkoutDistance,
   defaultEasyPace,
@@ -22,6 +23,10 @@ export function TodayOverview({
   const recorded = training.todayRunning.runs > 0,
     workout = training.todayWorkout,
     rest = !!training.todaySessions && !workout;
+  const unavailableSlots = training.todaySessions?.unavailableSlots ?? [];
+  const unavailable = unavailableSlots.length > 0;
+  const unavailableText =
+    unavailableSlots.length === 3 ? "all day" : unavailableSlots.join(", ");
   const health = data.health;
   const target = training.plannedKm;
   return (
@@ -34,27 +39,33 @@ export function TodayOverview({
               ? "RUN RECORDED TODAY"
               : workout
                 ? "ON YOUR SCHEDULE"
-                : rest
-                  ? "REST FROM RUNNING"
-                  : "YOUR NEXT WEEK"}
+                : unavailable
+                  ? "TRAINING WINDOWS UNAVAILABLE"
+                  : rest
+                    ? "REST FROM RUNNING"
+                    : "YOUR NEXT WEEK"}
           </span>
           <h2 id="today-run-heading">
             {recorded
               ? `${training.todayRunning.km.toFixed(1)} km, logged.`
               : workout
                 ? workout.title
-                : rest
-                  ? "A day for recovery."
-                  : "A little planning. A better week."}
+                : unavailable
+                  ? "Your availability, respected."
+                  : rest
+                    ? "A day for recovery."
+                    : "A little planning. A better week."}
           </h2>
           <p>
             {recorded
               ? `${Math.round(training.todayRunning.minutes)} minutes of running synced today. Take a moment to check in with your recovery.`
               : workout
                 ? `Your saved workout is ready. ${formatWorkoutDistance(workout, training.currentPlan?.easyPace ?? defaultEasyPace)}, with the steps laid out for Garmin.`
-                : rest
-                  ? "No run is scheduled today. Check in with your recovery and follow your other planned training."
-                  : "Review your starting week, then build from the training you actually complete."}
+                : unavailable
+                  ? `Unavailable ${unavailableText}. Workouts in those windows are excluded from today’s schedule. Review your availability to make room again.`
+                  : rest
+                    ? "No run is scheduled today. Check in with your recovery and follow your other planned training."
+                    : "Review your starting week, then build from the training you actually complete."}
           </p>
           <Link
             className="button hero-button"
@@ -98,6 +109,11 @@ export function TodayOverview({
               Your week <Icon name="arrow" />
             </Link>
           </div>
+          {unavailable && (
+            <p className="inline-notice small-text">
+              Unavailable · {unavailableText}
+            </p>
+          )}
           {training.todaySessions.rule?.notes.map((note) => (
             <p className="inline-notice small-text" key={note}>
               {note}
@@ -115,10 +131,12 @@ export function TodayOverview({
           </div>
           {!training.todaySessions.sessions.length && (
             <p className="muted">
-              No workouts prescribed. Sunday rests unless you explicitly
-              schedule a race.
+              {unavailable
+                ? "No workouts scheduled. Your availability blocks are reflected here."
+                : "No workouts prescribed. Sunday rests unless you explicitly schedule a race."}
             </p>
           )}
+          {training.currentPlan && <ScheduleAdjustments day={training.today} />}
           {training.todaySessions.warnings.map((warning, i) => (
             <p className="error-text small-text" key={i}>
               {warning}

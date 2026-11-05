@@ -1,3 +1,4 @@
+import type { AvailabilityBlock } from "../../shared/types/rescheduling";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import {
@@ -46,6 +47,50 @@ export const weekPreferencesSchema = z
   .strict();
 export class ScheduleRepository {
   constructor(private db: Database.Database) {}
+  availability(): AvailabilityBlock[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT day,slots_json,reason FROM training_availability ORDER BY day",
+        )
+        .all() as {
+        day: string;
+        slots_json: string;
+        reason: AvailabilityBlock["reason"];
+      }[]
+    ).map((row) => ({
+      day: row.day,
+      slots: JSON.parse(row.slots_json),
+      reason: row.reason,
+    }));
+  }
+  saveAvailability(block: AvailabilityBlock) {
+    if (!block.slots.length)
+      this.db
+        .prepare("DELETE FROM training_availability WHERE day=?")
+        .run(block.day);
+    else
+      this.db
+        .prepare(
+          "INSERT INTO training_availability(day,slots_json,reason) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET slots_json=excluded.slots_json,reason=excluded.reason",
+        )
+        .run(block.day, JSON.stringify(block.slots), block.reason);
+  }
+  revisionData() {
+    return {
+      overrides: this.db
+        .prepare(
+          "SELECT day,sessions_json,review_id FROM day_schedule_overrides ORDER BY day",
+        )
+        .all(),
+      availability: this.availability(),
+      edits: this.db
+        .prepare(
+          "SELECT id,undone_at FROM schedule_edit_history ORDER BY created_at,id",
+        )
+        .all(),
+    };
+  }
   preferences(): TrainingPreferences {
     const row = this.db
       .prepare("SELECT settings_json FROM training_preferences WHERE id=1")

@@ -1,3 +1,12 @@
+import {
+  applyAvailability,
+  relocatedSession,
+  withSessionIdentity,
+} from "../../shared/schedule-editing";
+import type {
+  AvailabilityBlock,
+  TrainingSlot,
+} from "../../shared/types/rescheduling";
 import { CommitmentRepository } from "./commitment-repository";
 import { AthleteRepository } from "./athlete-repository";
 import { returnReady } from "./commitments";
@@ -16,30 +25,49 @@ import { ScheduleRepository } from "./schedule-repository";
 import { TrainingRepository } from "./repository";
 import {
   buildWeekSchedule,
-  validateDaySessions,
-  validateRunningSchedule,
   ScheduleRuleError,
 } from "../../shared/weekly-schedule";
 import { sameWorkout } from "../../shared/workout-identity";
 import { calendarDate, shiftDay } from "./dates";
 import { sportGroup } from "./metrics";
 
+export type CalendarProjectionOptions = {
+  changes?: ScheduleChange[];
+  availability?: AvailabilityBlock[];
+  canonical?: boolean;
+  ignoreOverrides?: string[];
+};
 export function trainingCalendar(
   db: Database.Database,
   plan: TrainingPlan,
   activities: ActivityMeasurement[],
   now: Date,
   weekOverride?: WeekPreferences,
+  projection: CalendarProjectionOptions = {},
 ) {
+  const {
+    changes: previewChanges = [],
+    availability: availabilityOverride,
+    canonical = false,
+    ignoreOverrides = [],
+  } = projection;
   const schedule = new ScheduleRepository(db),
     profile = schedule.preferences(),
     week = weekOverride ?? schedule.week(plan.start);
-  const changes: ScheduleChange[] = schedule.changes(plan.start).map((c) => ({
-    ...c,
-    sessions: c.sessions.filter(
-      (s) => s.sport !== "running" || !s.workout.race,
-    ),
-  }));
+  const changes: ScheduleChange[] = schedule
+    .changes(plan.start)
+    .filter((c) => !ignoreOverrides.includes(c.day))
+    .map((c) => ({
+      ...c,
+      sessions: c.sessions.filter(
+        (s) => s.sport !== "running" || !s.workout.race,
+      ),
+    }));
+  for (const preview of previewChanges) {
+    const i = changes.findIndex((c) => c.day === preview.day);
+    if (i >= 0) changes[i] = preview;
+    else changes.push(preview);
+  }
   for (const change of changes)
     for (const session of change.sessions)
       if (session.sport === "cycling")
@@ -86,8 +114,10 @@ export function trainingCalendar(
       km: (a.distanceMeters ?? 0) / 1000,
     }));
   const commitments = new CommitmentRepository(db);
-  return applyCommitments(
-    buildWeekSchedule(plan, week, profile, changes, records),
+  const rawCalendar = buildWeekSchedule(plan, week, profile, changes, records);
+  if (canonical) return rawCalendar;
+  const committed = applyCommitments(
+    rawCalendar,
     plan,
     commitments.all(),
     new AthleteRepository(db).profile().targets,
@@ -109,6 +139,20 @@ export function trainingCalendar(
       ),
     },
   );
+  const available = applyAvailability(
+    committed,
+    availabilityOverride ?? schedule.availability(),
+  );
+  return {
+    ...available,
+    days: available.days.map((day) => ({
+      ...day,
+      sessions: day.sessions.map((entry) => ({
+        ...entry,
+        session: withSessionIdentity(entry.session, day.day),
+      })),
+    })),
+  };
 }
 export function moveRunningDay(
   db: Database.Database,
@@ -117,6 +161,7 @@ export function moveRunningDay(
   to: number,
   activities: ActivityMeasurement[],
   now: Date,
+  slot: TrainingSlot = "lunch",
 ) {
   const calendar = trainingCalendar(db, plan, activities, now),
     source = calendar.days[from],
@@ -157,15 +202,13 @@ export function moveRunningDay(
     throw new ScheduleRuleError(
       "The destination day already has two workouts recorded or planned.",
     );
-  const moved = {
-    ...run.session,
-    workout: { ...run.session.workout, dayOffset: to },
-  };
-  validateRunningSchedule({ ...plan, workouts: [moved.workout] });
-  validateDaySessions(
-    to,
-    [moved, ...target.sessions.map((s) => s.session)],
+  const moved = relocatedSession(
+    run,
+    source,
+    target,
+    slot,
     plan.easyPace,
+    today,
   );
   return [
     {

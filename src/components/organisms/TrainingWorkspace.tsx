@@ -1,4 +1,5 @@
 "use client";
+import { applyAvailability } from "@/shared/schedule-editing";
 import { TrainingCalendarManager } from "./TrainingCalendarManager";
 import { applyCommitments, calendarGate } from "@/shared/commitment-calendar";
 import { useState } from "react";
@@ -147,16 +148,19 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   const calendar = preview
     ? saved && data.reviewedCalendars[start]
       ? data.reviewedCalendars[start]
-      : applyCommitments(
-          buildWeekSchedule(
+      : applyAvailability(
+          applyCommitments(
+            buildWeekSchedule(
+              preview,
+              data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
+              data.preferences,
+            ),
             preview,
-            data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
-            data.preferences,
+            data.commitments,
+            data.athlete.targets,
+            data.calendarOptions,
           ),
-          preview,
-          data.commitments,
-          data.athlete.targets,
-          data.calendarOptions,
+          data.availability,
         )
     : null;
   const effectiveRuns =

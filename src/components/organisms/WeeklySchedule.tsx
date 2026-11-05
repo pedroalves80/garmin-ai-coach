@@ -9,8 +9,10 @@ import type {
 } from "@/shared/types/schedule";
 import { workoutKm } from "@/shared/training-plan";
 import { SessionCard } from "../molecules/SessionCard";
+import { ScheduleAdjustments } from "./ScheduleAdjustments";
 import { Button } from "../atoms/Button";
 
+const slotLabels = { morning: "Morning", lunch: "Lunch", later: "Later" };
 const names = [
   "Monday",
   "Tuesday",
@@ -41,7 +43,6 @@ export function WeeklySchedule({
     [week, setWeek] = useState(initialWeek),
     [pending, setPending] = useState(false),
     [message, setMessage] = useState("");
-  const [destination, setDestination] = useState("");
   const day = calendar.days[selectedDay];
   async function save(body: object) {
     setPending(true);
@@ -68,19 +69,6 @@ export function WeeklySchedule({
       setPending(false);
     }
   }
-  const destinations = calendar.days.filter(
-    (d) =>
-      d.dayOffset < 6 &&
-      d.dayOffset !== selectedDay &&
-      !d.rule &&
-      d.day >= today &&
-      !d.sessions.some((s) => s.session.sport === "running") &&
-      !d.recorded.some((r) => r.sport === "running") &&
-      d.recorded.length +
-        d.sessions.filter((s) => s.status === "planned").length <
-        2,
-  );
-  const run = day.sessions.find((s) => s.session.sport === "running");
   return (
     <>
       <details className="surface supporting-details">
@@ -173,11 +161,8 @@ export function WeeklySchedule({
               key={d.day}
               type="button"
               aria-pressed={selectedDay === d.dayOffset}
-              aria-label={`${names[d.dayOffset]} · ${run?.sport === "running" ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)} km run` : "no run"}${secondary ? ` + ${secondary.sport}` : ""}`}
-              onClick={() => {
-                onSelect(d.dayOffset);
-                setDestination("");
-              }}
+              aria-label={`${names[d.dayOffset]} · ${run?.sport === "running" ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)} km run` : "no run"}${secondary ? ` + ${secondary.sport}` : ""}${d.unavailableSlots?.length ? ` · Unavailable: ${d.unavailableSlots.map((slot) => slotLabels[slot]).join(", ")}` : ""}`}
+              onClick={() => onSelect(d.dayOffset)}
             >
               <span>{names[d.dayOffset].slice(0, 3)}</span>
               <strong>{Number(d.day.slice(-2))}</strong>
@@ -195,6 +180,9 @@ export function WeeklySchedule({
                     ? "Cycle"
                     : ""}
               </small>
+              {!!d.unavailableSlots?.length && (
+                <small className="unavailable-day-label">Unavailable</small>
+              )}
               <span className={`day-dot ${run ? "has-run" : ""}`} />
             </button>
           );
@@ -224,6 +212,14 @@ export function WeeklySchedule({
             {day.sessions.length} / 2 sessions
           </span>
         </div>
+        {!!day.unavailableSlots?.length && (
+          <p className="inline-notice small-text">
+            Unavailable ·{" "}
+            {day.unavailableSlots.length === 3
+              ? "Whole day"
+              : day.unavailableSlots.map((slot) => slotLabels[slot]).join(", ")}
+          </p>
+        )}
         {day.rule?.notes.map((note) => (
           <p className="inline-notice small-text" key={note}>
             {note}
@@ -235,14 +231,17 @@ export function WeeklySchedule({
               key={`${day.day}-${entry.session.sport}-${i}`}
               entry={entry}
               easyPace={plan.easyPace}
+              unconfirmed={saved && day.day < today}
             />
           ))}
         </div>
         {!day.sessions.length && (
           <p className="muted">
-            {selectedDay === 6
-              ? "Complete rest. No running, cycling or Hyrox scheduled."
-              : "No workout scheduled. Leave room for recovery."}
+            {day.unavailableSlots?.length
+              ? "No workouts scheduled. Your availability blocks are reflected here."
+              : selectedDay === 6
+                ? "Complete rest. No running, cycling or Hyrox scheduled."
+                : "No workout scheduled. Leave room for recovery."}
           </p>
         )}
         {day.warnings.map((warning, i) => (
@@ -261,83 +260,8 @@ export function WeeklySchedule({
             ))}
           </details>
         )}
-        {saved &&
-          run?.status === "planned" &&
-          run.session.sport === "running" &&
-          !run.session.workout.race &&
-          !day.rule &&
-          day.day >= today &&
-          destinations.length > 0 && (
-            <details className="supporting-details">
-              <summary>Move this run to another day</summary>
-              <form
-                className="move-run-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (destination)
-                    void save({
-                      action: "move",
-                      start: plan.start,
-                      from: selectedDay,
-                      to: Number(destination),
-                    });
-                }}
-              >
-                <label htmlFor="run-destination">
-                  Destination · same week
-                  <select
-                    id="run-destination"
-                    required
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                  >
-                    <option value="">Choose a free running day</option>
-                    {destinations.map((d) => (
-                      <option key={d.day} value={d.dayOffset}>
-                        {names[d.dayOffset]} · {d.day}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="muted small-text">
-                  Moves the whole run and preserves weekly distance. Weekday
-                  lunch must fit 2 hours. Consider recovery around Hyrox and the
-                  long run.
-                </p>
-                <Button disabled={pending || destination === ""}>
-                  Move run
-                </Button>
-              </form>
-            </details>
-          )}
+        {saved && <ScheduleAdjustments day={day.day} />}
       </section>
-      {saved &&
-        day.day >= today &&
-        day.dayOffset < 6 &&
-        day.sessions.some(
-          (s) => s.session.sport !== "running" && s.status === "planned",
-        ) && (
-          <div className="surface">
-            <p className="muted small-text">
-              Supporting sessions are optional. Skip the later session when
-              recovery or the next key run needs priority. A prescribed ride
-              remains at least one hour.
-            </p>
-            <Button
-              className="button-secondary"
-              disabled={pending}
-              onClick={() =>
-                void save({
-                  action: "skip_secondary",
-                  start: plan.start,
-                  dayOffset: selectedDay,
-                })
-              }
-            >
-              Skip later session · keep the run
-            </Button>
-          </div>
-        )}
       {message && (
         <p className="inline-notice small-text" role="status">
           {message}
