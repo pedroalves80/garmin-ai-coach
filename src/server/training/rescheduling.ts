@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -154,30 +155,34 @@ export class ScheduleEditingService {
       schedule: this.schedule.revisionData(),
       preferences: this.schedule.preferences(),
       weeks: this.schedule.weeks(),
-      legacy: this.db
-        .prepare("SELECT * FROM coach_overrides ORDER BY day")
-        .all(),
+      legacy: prepare(
+        this.db,
+        "SELECT * FROM coach_overrides ORDER BY day",
+      ).all(),
       commitments: new CommitmentRepository(this.db).all(),
       athlete: new AthleteRepository(this.db).profile(),
       efforts: new AthleteRepository(this.db).efforts(),
       checkIns: this.training.checkIns(),
       activities: this.activities(),
       lastSync: this.garmin.status()?.lastCompletedAt,
-      health: this.db
-        .prepare("SELECT * FROM daily_health ORDER BY day DESC LIMIT 7")
-        .all(),
+      health: prepare(
+        this.db,
+        "SELECT * FROM daily_health ORDER BY day DESC LIMIT 7",
+      ).all(),
     });
   }
   private snapshot(days: string[]): Snapshot {
     const overrides: OverrideRow[] = [],
       availability: AvailabilityRow[] = [];
     for (const day of days) {
-      const o = this.db
-        .prepare("SELECT * FROM day_schedule_overrides WHERE day=?")
-        .get(day) as OverrideRow | undefined;
-      const a = this.db
-        .prepare("SELECT * FROM training_availability WHERE day=?")
-        .get(day) as AvailabilityRow | undefined;
+      const o = prepare(
+        this.db,
+        "SELECT * FROM day_schedule_overrides WHERE day=?",
+      ).get(day) as OverrideRow | undefined;
+      const a = prepare(
+        this.db,
+        "SELECT * FROM training_availability WHERE day=?",
+      ).get(day) as AvailabilityRow | undefined;
       if (o) overrides.push(o);
       if (a) availability.push(a);
     }
@@ -185,23 +190,23 @@ export class ScheduleEditingService {
   }
   private restore(days: string[], snapshot: Snapshot) {
     for (const day of days) {
-      this.db
-        .prepare("DELETE FROM day_schedule_overrides WHERE day=?")
-        .run(day);
-      this.db.prepare("DELETE FROM training_availability WHERE day=?").run(day);
+      prepare(this.db, "DELETE FROM day_schedule_overrides WHERE day=?").run(
+        day,
+      );
+      prepare(this.db, "DELETE FROM training_availability WHERE day=?").run(
+        day,
+      );
     }
     for (const row of snapshot.overrides)
-      this.db
-        .prepare(
-          "INSERT INTO day_schedule_overrides(day,sessions_json,review_id) VALUES(?,?,?)",
-        )
-        .run(row.day, row.sessions_json, row.review_id);
+      prepare(
+        this.db,
+        "INSERT INTO day_schedule_overrides(day,sessions_json,review_id) VALUES(?,?,?)",
+      ).run(row.day, row.sessions_json, row.review_id);
     for (const row of snapshot.availability)
-      this.db
-        .prepare(
-          "INSERT INTO training_availability(day,slots_json,reason) VALUES(?,?,?)",
-        )
-        .run(row.day, row.slots_json, row.reason);
+      prepare(
+        this.db,
+        "INSERT INTO training_availability(day,slots_json,reason) VALUES(?,?,?)",
+      ).run(row.day, row.slots_json, row.reason);
   }
   private undoContext(days: string[]) {
     const starts = new Set(days.map(mondayOf));
@@ -213,9 +218,10 @@ export class ScheduleEditingService {
       athlete: new AthleteRepository(this.db).profile(),
       checkIns: this.training.checkIns(),
       efforts: new AthleteRepository(this.db).efforts(),
-      legacy: this.db
-        .prepare("SELECT * FROM coach_overrides ORDER BY day")
-        .all(),
+      legacy: prepare(
+        this.db,
+        "SELECT * FROM coach_overrides ORDER BY day",
+      ).all(),
       activities: this.activities().filter((a) =>
         days.includes(calendarDate(new Date(a.startedAt))),
       ),
@@ -233,11 +239,10 @@ export class ScheduleEditingService {
     return null;
   }
   private historyRows(): HistoryRow[] {
-    return this.db
-      .prepare(
-        "SELECT * FROM schedule_edit_history ORDER BY rowid DESC LIMIT 30",
-      )
-      .all() as HistoryRow[];
+    return prepare(
+      this.db,
+      "SELECT * FROM schedule_edit_history ORDER BY rowid DESC LIMIT 30",
+    ).all() as HistoryRow[];
   }
   catalog(week: string): ScheduleEditCatalog {
     const today = calendarDate(this.now),
@@ -319,9 +324,10 @@ export class ScheduleEditingService {
       }).days.find((d) => d.day === day)!;
     };
     if (request.action === "undo") {
-      const row = this.db
-        .prepare("SELECT * FROM schedule_edit_history WHERE id=?")
-        .get(request.id) as HistoryRow | undefined;
+      const row = prepare(
+        this.db,
+        "SELECT * FROM schedule_edit_history WHERE id=?",
+      ).get(request.id) as HistoryRow | undefined;
       if (!row) throw new ScheduleEditError("Change not found.", 404);
       const problem = this.undoProblem(row);
       if (problem) throw new ScheduleEditError(`Cannot undo: ${problem}`, 409);
@@ -798,26 +804,26 @@ export class ScheduleEditingService {
         const id = randomUUID(),
           stamp = this.now.toISOString();
         if (prepared.undoId)
-          this.db
-            .prepare("UPDATE schedule_edit_history SET undone_at=? WHERE id=?")
-            .run(stamp, prepared.undoId);
-        this.db
-          .prepare(
-            "INSERT INTO schedule_edit_history(id,created_at,summary,reason,days_json,before_json,after_json,context_json,undone_at) VALUES(?,?,?,?,?,?,?,?,?)",
-          )
-          .run(
-            id,
-            stamp,
-            prepared.preview.summary,
-            prepared.preview.request.action === "undo"
-              ? null
-              : prepared.preview.request.reason,
-            JSON.stringify(days),
-            JSON.stringify(before),
-            JSON.stringify(this.snapshot(days)),
-            this.undoContext(days),
-            prepared.undoId ? stamp : null,
-          );
+          prepare(
+            this.db,
+            "UPDATE schedule_edit_history SET undone_at=? WHERE id=?",
+          ).run(stamp, prepared.undoId);
+        prepare(
+          this.db,
+          "INSERT INTO schedule_edit_history(id,created_at,summary,reason,days_json,before_json,after_json,context_json,undone_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        ).run(
+          id,
+          stamp,
+          prepared.preview.summary,
+          prepared.preview.request.action === "undo"
+            ? null
+            : prepared.preview.request.reason,
+          JSON.stringify(days),
+          JSON.stringify(before),
+          JSON.stringify(this.snapshot(days)),
+          this.undoContext(days),
+          prepared.undoId ? stamp : null,
+        );
         return { saved: true, id };
       })
       .immediate();

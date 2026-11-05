@@ -1,3 +1,4 @@
+import { prepare } from "./statements";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -56,16 +57,14 @@ export class GarminRepository {
     const owner = randomUUID();
     this.sqlite
       .transaction(() => {
-        this.sqlite
-          .prepare(
-            "DELETE FROM sync_lock WHERE provider = 'garmin' AND expires_at < ?",
-          )
-          .run(now.toISOString());
-        const result = this.sqlite
-          .prepare(
-            "INSERT OR IGNORE INTO sync_lock(provider, owner, expires_at) VALUES ('garmin', ?, ?)",
-          )
-          .run(owner, new Date(now.getTime() + 10 * 60_000).toISOString());
+        prepare(
+          this.sqlite,
+          "DELETE FROM sync_lock WHERE provider = 'garmin' AND expires_at < ?",
+        ).run(now.toISOString());
+        const result = prepare(
+          this.sqlite,
+          "INSERT OR IGNORE INTO sync_lock(provider, owner, expires_at) VALUES ('garmin', ?, ?)",
+        ).run(owner, new Date(now.getTime() + 10 * 60_000).toISOString());
         if (!result.changes) throw new SyncBusyError();
         this.db
           .insert(syncState)
@@ -89,17 +88,17 @@ export class GarminRepository {
   }
 
   release(owner: string) {
-    this.sqlite
-      .prepare("DELETE FROM sync_lock WHERE provider = 'garmin' AND owner = ?")
-      .run(owner);
+    prepare(
+      this.sqlite,
+      "DELETE FROM sync_lock WHERE provider = 'garmin' AND owner = ?",
+    ).run(owner);
   }
   isRunning() {
     return Boolean(
-      this.sqlite
-        .prepare(
-          "SELECT 1 FROM sync_lock WHERE provider = 'garmin' AND expires_at >= ?",
-        )
-        .get(new Date().toISOString()),
+      prepare(
+        this.sqlite,
+        "SELECT 1 FROM sync_lock WHERE provider = 'garmin' AND expires_at >= ?",
+      ).get(new Date().toISOString()),
     );
   }
 
@@ -122,9 +121,10 @@ export class GarminRepository {
   ) {
     this.sqlite
       .transaction(() => {
-        const lock = this.sqlite
-          .prepare("SELECT owner FROM sync_lock WHERE provider = 'garmin'")
-          .get() as { owner: string } | undefined;
+        const lock = prepare(
+          this.sqlite,
+          "SELECT owner FROM sync_lock WHERE provider = 'garmin'",
+        ).get() as { owner: string } | undefined;
         if (lock?.owner !== owner) throw new SyncBusyError();
         const importedAt = now.toISOString();
         for (const item of batch.activities) {

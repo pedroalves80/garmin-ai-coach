@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import {
@@ -59,27 +60,26 @@ export const effortSchema = z
 export class AthleteRepository {
   constructor(private db: Database.Database) {}
   profile(): AthleteProfile {
-    const row = this.db
-      .prepare("SELECT profile_json FROM athlete_profile WHERE id=1")
-      .get() as { profile_json: string } | undefined;
+    const row = prepare(
+      this.db,
+      "SELECT profile_json FROM athlete_profile WHERE id=1",
+    ).get() as { profile_json: string } | undefined;
     return row
       ? athleteSchema.parse(JSON.parse(row.profile_json))
       : structuredClone(DEFAULT_ATHLETE);
   }
   saveProfile(profile: AthleteProfile) {
-    this.db
-      .prepare(
-        "INSERT INTO athlete_profile(id,profile_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET profile_json=excluded.profile_json",
-      )
-      .run(JSON.stringify(athleteSchema.parse(profile)));
+    prepare(
+      this.db,
+      "INSERT INTO athlete_profile(id,profile_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET profile_json=excluded.profile_json",
+    ).run(JSON.stringify(athleteSchema.parse(profile)));
   }
   efforts(): SessionEffort[] {
     return (
-      this.db
-        .prepare(
-          "SELECT activity_id AS activityId,rpe,prescription_completed AS prescriptionCompleted FROM session_efforts",
-        )
-        .all() as {
+      prepare(
+        this.db,
+        "SELECT activity_id AS activityId,rpe,prescription_completed AS prescriptionCompleted FROM session_efforts",
+      ).all() as {
         activityId: string;
         rpe: number;
         prescriptionCompleted: number;
@@ -91,15 +91,14 @@ export class AthleteRepository {
   }
   saveEffort(effort: SessionEffort) {
     const parsed = effortSchema.parse(effort);
-    this.db
-      .prepare(
-        "INSERT INTO session_efforts(activity_id,rpe,prescription_completed,updated_at) VALUES(?,?,?,?) ON CONFLICT(activity_id) DO UPDATE SET rpe=excluded.rpe,prescription_completed=excluded.prescription_completed,updated_at=excluded.updated_at",
-      )
-      .run(
-        parsed.activityId,
-        parsed.rpe,
-        parsed.prescriptionCompleted ? 1 : 0,
-        new Date().toISOString(),
-      );
+    prepare(
+      this.db,
+      "INSERT INTO session_efforts(activity_id,rpe,prescription_completed,updated_at) VALUES(?,?,?,?) ON CONFLICT(activity_id) DO UPDATE SET rpe=excluded.rpe,prescription_completed=excluded.prescription_completed,updated_at=excluded.updated_at",
+    ).run(
+      parsed.activityId,
+      parsed.rpe,
+      parsed.prescriptionCompleted ? 1 : 0,
+      new Date().toISOString(),
+    );
   }
 }

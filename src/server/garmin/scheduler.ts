@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { GarminRepository, SyncBusyError } from "../db/garmin-repository";
@@ -18,9 +19,10 @@ type ScheduleRow = {
   heartbeat_at: string | null;
 };
 function scheduleRow(db: Database.Database) {
-  return db
-    .prepare("SELECT * FROM sync_schedule WHERE provider='garmin'")
-    .get() as ScheduleRow | undefined;
+  return prepare(
+    db,
+    "SELECT * FROM sync_schedule WHERE provider='garmin'",
+  ).get() as ScheduleRow | undefined;
 }
 export function autoSyncStatus(
   db: Database.Database,
@@ -62,11 +64,10 @@ export class GarminScheduler {
       .transaction(() => {
         const lastSync =
           new GarminRepository(this.db).status()?.lastCompletedAt ?? null;
-        this.db
-          .prepare(
-            "INSERT OR IGNORE INTO sync_schedule(provider,next_run_at,last_seen_sync) VALUES('garmin',?,?)",
-          )
-          .run(iso, lastSync);
+        prepare(
+          this.db,
+          "INSERT OR IGNORE INTO sync_schedule(provider,next_run_at,last_seen_sync) VALUES('garmin',?,?)",
+        ).run(iso, lastSync);
         const row = scheduleRow(this.db)!;
         if (
           row.worker_owner &&
@@ -98,29 +99,27 @@ export class GarminScheduler {
           failures = 0;
           error = null;
         }
-        this.db
-          .prepare(
-            "UPDATE sync_schedule SET worker_owner=?,worker_expires_at=?,heartbeat_at=?,next_run_at=?,failures=?,last_error=?,last_seen_sync=? WHERE provider='garmin'",
-          )
-          .run(
-            this.owner,
-            new Date(now.getTime() + WORKER_LEASE_MS).toISOString(),
-            iso,
-            next,
-            failures,
-            error,
-            lastSync,
-          );
+        prepare(
+          this.db,
+          "UPDATE sync_schedule SET worker_owner=?,worker_expires_at=?,heartbeat_at=?,next_run_at=?,failures=?,last_error=?,last_seen_sync=? WHERE provider='garmin'",
+        ).run(
+          this.owner,
+          new Date(now.getTime() + WORKER_LEASE_MS).toISOString(),
+          iso,
+          next,
+          failures,
+          error,
+          lastSync,
+        );
         return true;
       })
       .immediate();
   }
   release() {
-    this.db
-      .prepare(
-        "UPDATE sync_schedule SET worker_owner=NULL,worker_expires_at=NULL,heartbeat_at=NULL WHERE provider='garmin' AND worker_owner=?",
-      )
-      .run(this.owner);
+    prepare(
+      this.db,
+      "UPDATE sync_schedule SET worker_owner=NULL,worker_expires_at=NULL,heartbeat_at=NULL WHERE provider='garmin' AND worker_owner=?",
+    ).run(this.owner);
   }
   async tick(signal = new AbortController().signal) {
     if (
@@ -134,11 +133,10 @@ export class GarminScheduler {
     const row = scheduleRow(this.db)!;
     if (row.next_run_at > this.now().toISOString()) return "idle";
     this.inFlight = true;
-    this.db
-      .prepare(
-        "UPDATE sync_schedule SET last_attempt_at=? WHERE provider='garmin' AND worker_owner=?",
-      )
-      .run(this.now().toISOString(), this.owner);
+    prepare(
+      this.db,
+      "UPDATE sync_schedule SET last_attempt_at=? WHERE provider='garmin' AND worker_owner=?",
+    ).run(this.now().toISOString(), this.owner);
     try {
       await this.run(signal);
       this.finish(SYNC_INTERVAL_MS, 0, null);
@@ -171,16 +169,15 @@ export class GarminScheduler {
   private finish(delay: number, failures: number, error: string | null) {
     const lastSync =
       new GarminRepository(this.db).status()?.lastCompletedAt ?? null;
-    this.db
-      .prepare(
-        "UPDATE sync_schedule SET next_run_at=?,failures=?,last_error=?,last_seen_sync=? WHERE provider='garmin' AND worker_owner=?",
-      )
-      .run(
-        new Date(this.now().getTime() + delay).toISOString(),
-        failures,
-        error,
-        lastSync,
-        this.owner,
-      );
+    prepare(
+      this.db,
+      "UPDATE sync_schedule SET next_run_at=?,failures=?,last_error=?,last_seen_sync=? WHERE provider='garmin' AND worker_owner=?",
+    ).run(
+      new Date(this.now().getTime() + delay).toISOString(),
+      failures,
+      error,
+      lastSync,
+      this.owner,
+    );
   }
 }

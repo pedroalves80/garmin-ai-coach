@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import { recoveryWarnings } from "../../shared/schedule-editing";
 import { CommitmentRepository } from "../training/commitment-repository";
 import { eventOnlyPlan, calendarGate } from "../../shared/commitment-calendar";
@@ -64,11 +65,10 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     null;
   const lastSync = garmin.status()?.lastCompletedAt ?? null;
   const weeks = weeklyMetrics(activities, now);
-  const acceptedRow = sqlite
-    .prepare(
-      "SELECT review_id FROM day_schedule_overrides WHERE day=? UNION ALL SELECT review_id FROM coach_overrides WHERE day=? AND NOT EXISTS(SELECT 1 FROM day_schedule_overrides WHERE day=?) LIMIT 1",
-    )
-    .get(day, day, day) as { review_id: string | null } | undefined;
+  const acceptedRow = prepare(
+    sqlite,
+    "SELECT review_id FROM day_schedule_overrides WHERE day=? UNION ALL SELECT review_id FROM coach_overrides WHERE day=? AND NOT EXISTS(SELECT 1 FROM day_schedule_overrides WHERE day=?) LIMIT 1",
+  ).get(day, day, day) as { review_id: string | null } | undefined;
   const accepted = acceptedRow?.review_id
     ? { review_id: acceptedRow.review_id }
     : undefined;
@@ -310,11 +310,10 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   constraints.push(
     "Running is the priority. Cycling never replaces a run. At most two workouts daily. Weekday lunch <=120 min; later sessions and Saturday have no availability cap. Hyrox is only Monday, Wednesday, Friday. Volume increases require a separately reviewed week.",
   );
-  const health = sqlite
-    .prepare(
-      "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
-    )
-    .all(shiftDay(day, -6), day);
+  const health = prepare(
+    sqlite,
+    "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
+  ).all(shiftDay(day, -6), day);
   const progression = assessProgression({
     now,
     plans,

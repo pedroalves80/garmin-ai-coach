@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import type { AvailabilityBlock } from "../../shared/types/rescheduling";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -49,11 +50,10 @@ export class ScheduleRepository {
   constructor(private db: Database.Database) {}
   availability(): AvailabilityBlock[] {
     return (
-      this.db
-        .prepare(
-          "SELECT day,slots_json,reason FROM training_availability ORDER BY day",
-        )
-        .all() as {
+      prepare(
+        this.db,
+        "SELECT day,slots_json,reason FROM training_availability ORDER BY day",
+      ).all() as {
         day: string;
         slots_json: string;
         reason: AvailabilityBlock["reason"];
@@ -66,35 +66,33 @@ export class ScheduleRepository {
   }
   saveAvailability(block: AvailabilityBlock) {
     if (!block.slots.length)
-      this.db
-        .prepare("DELETE FROM training_availability WHERE day=?")
-        .run(block.day);
+      prepare(this.db, "DELETE FROM training_availability WHERE day=?").run(
+        block.day,
+      );
     else
-      this.db
-        .prepare(
-          "INSERT INTO training_availability(day,slots_json,reason) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET slots_json=excluded.slots_json,reason=excluded.reason",
-        )
-        .run(block.day, JSON.stringify(block.slots), block.reason);
+      prepare(
+        this.db,
+        "INSERT INTO training_availability(day,slots_json,reason) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET slots_json=excluded.slots_json,reason=excluded.reason",
+      ).run(block.day, JSON.stringify(block.slots), block.reason);
   }
   revisionData() {
     return {
-      overrides: this.db
-        .prepare(
-          "SELECT day,sessions_json,review_id FROM day_schedule_overrides ORDER BY day",
-        )
-        .all(),
+      overrides: prepare(
+        this.db,
+        "SELECT day,sessions_json,review_id FROM day_schedule_overrides ORDER BY day",
+      ).all(),
       availability: this.availability(),
-      edits: this.db
-        .prepare(
-          "SELECT id,undone_at FROM schedule_edit_history ORDER BY created_at,id",
-        )
-        .all(),
+      edits: prepare(
+        this.db,
+        "SELECT id,undone_at FROM schedule_edit_history ORDER BY created_at,id",
+      ).all(),
     };
   }
   preferences(): TrainingPreferences {
-    const row = this.db
-      .prepare("SELECT settings_json FROM training_preferences WHERE id=1")
-      .get() as { settings_json: string } | undefined;
+    const row = prepare(
+      this.db,
+      "SELECT settings_json FROM training_preferences WHERE id=1",
+    ).get() as { settings_json: string } | undefined;
     if (!row) return { ...DEFAULT_PREFERENCES };
     const saved = storedPreferencesSchema.parse(JSON.parse(row.settings_json));
     return {
@@ -110,26 +108,25 @@ export class ScheduleRepository {
     };
   }
   savePreferences(preferences: TrainingPreferences) {
-    this.db
-      .prepare(
-        "INSERT INTO training_preferences(id,settings_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET settings_json=excluded.settings_json",
-      )
-      .run(JSON.stringify(preferencesSchema.parse(preferences)));
+    prepare(
+      this.db,
+      "INSERT INTO training_preferences(id,settings_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET settings_json=excluded.settings_json",
+    ).run(JSON.stringify(preferencesSchema.parse(preferences)));
   }
   week(start: string): WeekPreferences {
-    const row = this.db
-      .prepare("SELECT settings_json FROM week_preferences WHERE week_start=?")
-      .get(start) as { settings_json: string } | undefined;
+    const row = prepare(
+      this.db,
+      "SELECT settings_json FROM week_preferences WHERE week_start=?",
+    ).get(start) as { settings_json: string } | undefined;
     return row
       ? weekPreferencesSchema.parse(JSON.parse(row.settings_json))
       : structuredClone(DEFAULT_WEEK_PREFERENCES);
   }
   weeks(): Record<string, WeekPreferences> {
-    const rows = this.db
-      .prepare(
-        "SELECT week_start,settings_json FROM week_preferences ORDER BY week_start DESC LIMIT 156",
-      )
-      .all() as { week_start: string; settings_json: string }[];
+    const rows = prepare(
+      this.db,
+      "SELECT week_start,settings_json FROM week_preferences ORDER BY week_start DESC LIMIT 156",
+    ).all() as { week_start: string; settings_json: string }[];
     return Object.fromEntries(
       rows.map((row) => [
         row.week_start,
@@ -139,20 +136,18 @@ export class ScheduleRepository {
   }
   saveWeek(start: string, week: WeekPreferences) {
     this.db.transaction(() => {
-      this.db
-        .prepare(
-          "INSERT INTO week_preferences(week_start,settings_json) VALUES(?,?) ON CONFLICT(week_start) DO UPDATE SET settings_json=excluded.settings_json",
-        )
-        .run(start, JSON.stringify(weekPreferencesSchema.parse(week)));
+      prepare(
+        this.db,
+        "INSERT INTO week_preferences(week_start,settings_json) VALUES(?,?) ON CONFLICT(week_start) DO UPDATE SET settings_json=excluded.settings_json",
+      ).run(start, JSON.stringify(weekPreferencesSchema.parse(week)));
     })();
   }
   changes(start: string): ScheduleChange[] {
     return (
-      this.db
-        .prepare(
-          "SELECT day,sessions_json FROM day_schedule_overrides WHERE day>=? AND day<? ORDER BY day",
-        )
-        .all(start, dayOffsetDate(start, 7)) as {
+      prepare(
+        this.db,
+        "SELECT day,sessions_json FROM day_schedule_overrides WHERE day>=? AND day<? ORDER BY day",
+      ).all(start, dayOffsetDate(start, 7)) as {
         day: string;
         sessions_json: string;
       }[]
@@ -160,10 +155,9 @@ export class ScheduleRepository {
   }
   saveChanges(changes: ScheduleChange[], reviewId: string | null) {
     for (const change of changes)
-      this.db
-        .prepare(
-          "INSERT INTO day_schedule_overrides(day,sessions_json,review_id) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET sessions_json=excluded.sessions_json,review_id=excluded.review_id",
-        )
-        .run(change.day, JSON.stringify(change.sessions), reviewId);
+      prepare(
+        this.db,
+        "INSERT INTO day_schedule_overrides(day,sessions_json,review_id) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET sessions_json=excluded.sessions_json,review_id=excluded.review_id",
+      ).run(change.day, JSON.stringify(change.sessions), reviewId);
   }
 }

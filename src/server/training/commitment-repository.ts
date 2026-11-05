@@ -1,3 +1,4 @@
+import { prepare } from "../db/statements";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import type {
@@ -51,40 +52,39 @@ export class CommitmentRepository {
   all(): Commitments {
     return {
       races: (
-        this.db
-          .prepare("SELECT item_json FROM race_events ORDER BY day")
-          .all() as { item_json: string }[]
+        prepare(
+          this.db,
+          "SELECT item_json FROM race_events ORDER BY day",
+        ).all() as { item_json: string }[]
       ).map((r) => raceSchema.parse(JSON.parse(r.item_json))),
       pauses: (
-        this.db
-          .prepare("SELECT item_json FROM training_pauses ORDER BY start")
-          .all() as { item_json: string }[]
+        prepare(
+          this.db,
+          "SELECT item_json FROM training_pauses ORDER BY start",
+        ).all() as { item_json: string }[]
       ).map((r) => pauseSchema.parse(JSON.parse(r.item_json))),
     };
   }
   saveRace(race: RaceEvent) {
     const parsed = raceSchema.parse(race);
-    this.db
-      .prepare(
-        "INSERT INTO race_events(id,day,item_json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,item_json=excluded.item_json",
-      )
-      .run(parsed.id, parsed.day, JSON.stringify(parsed));
+    prepare(
+      this.db,
+      "INSERT INTO race_events(id,day,item_json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,item_json=excluded.item_json",
+    ).run(parsed.id, parsed.day, JSON.stringify(parsed));
   }
   savePause(pause: TrainingPause) {
     const parsed = pauseSchema.parse(pause);
-    this.db
-      .prepare(
-        "INSERT INTO training_pauses(id,start,item_json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET start=excluded.start,item_json=excluded.item_json",
-      )
-      .run(parsed.id, parsed.start, JSON.stringify(parsed));
+    prepare(
+      this.db,
+      "INSERT INTO training_pauses(id,start,item_json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET start=excluded.start,item_json=excluded.item_json",
+    ).run(parsed.id, parsed.start, JSON.stringify(parsed));
   }
   restDays() {
     return (
-      this.db
-        .prepare(
-          "SELECT o.day,r.review_json FROM day_schedule_overrides o JOIN coach_reviews r ON r.id=o.review_id",
-        )
-        .all() as { day: string; review_json: string }[]
+      prepare(
+        this.db,
+        "SELECT o.day,r.review_json FROM day_schedule_overrides o JOIN coach_reviews r ON r.id=o.review_id",
+      ).all() as { day: string; review_json: string }[]
     )
       .filter((r) => JSON.parse(r.review_json).action === "rest")
       .map((r) => r.day);
