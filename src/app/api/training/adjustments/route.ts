@@ -45,9 +45,11 @@ function failure(error: unknown) {
   );
 }
 export async function GET(request: Request) {
-  // The same local-origin guard protects private calendar/history reads as mutations.
+  // Plain HTTP LAN browsers omit Origin and Fetch Metadata on same-origin GETs.
+  // The non-simple app header requires a CORS preflight from foreign pages;
+  // no foreign origin is allowed. Retain the existing host/origin/site checks.
   const headers = new Headers(request.headers);
-  if (!headers.has("origin") && headers.get("sec-fetch-site") === "same-origin")
+  if (!headers.has("origin") && headers.get("x-coach-request") === "local")
     headers.set(
       "origin",
       `${new URL(request.url).protocol}//${requestHost(request)}`,

@@ -865,32 +865,42 @@ test("replacing either reviewed week is blocked until a cross-week move is undon
   assert.deepEqual(f.training.plans(), plans);
 });
 
-test("same-origin catalog GET uses the browser Host when the server bind URL differs", async () => {
-  // Invalid input stops after authorization, keeping this guard regression isolated
-  // from the route's process-global database and real clock.
+test("catalog GET supports HTTP LAN browsers without Fetch Metadata and rejects foreign pages", async () => {
+  // Invalid input stops after authorization, isolating this guard from the process-global DB.
   const url = "http://0.0.0.0:3000/api/training/adjustments?week=invalid";
-  for (const host of ["localhost:3100", "raspberrypi.local:3000"]) {
-    const headers = {
-      host,
-      "sec-fetch-site": "same-origin",
-      "x-coach-request": "local",
-    };
-    const response = await getAdjustments(new Request(url, { headers }));
-    assert.equal(
-      response.status,
-      400,
-      "A local browser request must reach input validation",
-    );
-    assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.match((await response.json()).error, /valid.*change|preview/i);
-    for (const override of [
-      { origin: "https://evil.example" },
-      { "sec-fetch-site": "cross-site" },
+  for (const host of [
+    "localhost:3100",
+    "raspberrypi.local:3000",
+    "10.0.0.10:3100",
+  ]) {
+    for (const metadata of [
+      {},
+      { "sec-fetch-site": "same-origin" },
+      { "sec-fetch-site": "none" },
     ] as Record<string, string>[]) {
-      const rejected = await getAdjustments(
-        new Request(url, { headers: { ...headers, ...override } }),
+      const headers = { host, "x-coach-request": "local", ...metadata };
+      const response = await getAdjustments(new Request(url, { headers }));
+      assert.equal(
+        response.status,
+        400,
+        "Local browser reads must reach input validation",
       );
-      assert.equal(rejected.status, 403);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      for (const override of [
+        { origin: "https://evil.example" },
+        { origin: "null" },
+        { "sec-fetch-site": "cross-site" },
+        { "sec-fetch-site": "same-site" },
+      ] as Record<string, string>[]) {
+        const rejected = await getAdjustments(
+          new Request(url, { headers: { ...headers, ...override } }),
+        );
+        assert.equal(rejected.status, 403);
+      }
     }
+    const noHeader = await getAdjustments(
+      new Request(url, { headers: { host } }),
+    );
+    assert.equal(noHeader.status, 401);
   }
 });
