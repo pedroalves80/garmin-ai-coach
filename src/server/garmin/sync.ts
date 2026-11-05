@@ -2,13 +2,16 @@ import { GarminRepository } from "../db/garmin-repository";
 import { GarminClient } from "./client";
 import type { GarminActivity, GarminHealth, GarminSleep } from "./schemas";
 
+// ICU formatters allocate native memory that V8 heap limits do not constrain.
+// Reuse one formatter across the web and worker's frequent calendar projections.
+const lisbonDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Lisbon",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 export function calendarDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Lisbon",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return lisbonDate.format(date);
 }
 
 export function shiftDay(day: string, days: number): string {
