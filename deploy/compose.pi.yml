@@ -2,7 +2,7 @@
 name: garmin-ai-coach
 services:
   coach:
-    image: ${GARMIN_COACH_WEB_IMAGE:-${GARMIN_COACH_IMAGE:-garmin-ai-coach:8633dc8-arm64}}
+    image: ${GARMIN_COACH_WEB_IMAGE:-${GARMIN_COACH_IMAGE:-garmin-ai-coach:a897dc1-arm64}}
     container_name: garmin-ai-coach
     env_file:
       - path: ./configs/garmin-ai-coach/coach.env
@@ -63,7 +63,7 @@ services:
       start_period: 30s
       retries: 3
   garmin-worker:
-    image: ${GARMIN_COACH_IMAGE:-garmin-ai-coach:8633dc8-arm64}
+    image: ${GARMIN_COACH_IMAGE:-garmin-ai-coach:a897dc1-arm64}
     container_name: garmin-ai-coach-worker
     env_file:
       - path: ./configs/garmin-ai-coach/coach.env
