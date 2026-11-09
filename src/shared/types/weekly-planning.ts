@@ -10,6 +10,26 @@ export type RecoveryEvidence = {
   recentDays: number;
   notes: string[];
 };
+export type WeeklyReductionReason =
+  | "recovery_caution"
+  | "reported_recovery"
+  | "supporting_increase"
+  | "combined_load"
+  | "planned_load"
+  | "incomplete_running"
+  | "stale_data"
+  | "calendar_restriction";
+export type SupportingWorkload = {
+  recentMinutes: number;
+  baselineMinutes: number | null;
+  baselineWeeks: number;
+  change: number | null;
+  increased: boolean;
+};
+export type WeeklySelectionPolicy = {
+  supportingWorkload: SupportingWorkload;
+  reductionEvidence: { code: WeeklyReductionReason; detail: string }[];
+};
 export type WeeklyOptionId = "recommended" | "consolidate" | "recovery";
 export type WeeklyPlanOption = {
   id: WeeklyOptionId;
@@ -46,12 +66,19 @@ export type WeeklyPlanning = {
   };
   recovery: RecoveryEvidence;
   source: "local" | "ai";
-  aiStatus: "pending" | "ready" | "unavailable" | "refreshed" | "disabled";
+  aiStatus:
+    | "pending"
+    | "ready"
+    | "unavailable"
+    | "refreshed"
+    | "corrected"
+    | "disabled";
   summary: string;
   observations: string[];
   reasons: string[];
   selected: WeeklyPlanOption;
   options: WeeklyPlanOption[];
+  selectionPolicy: WeeklySelectionPolicy;
   performance: {
     pairs: number;
     secondsPerKmChange: number | null;

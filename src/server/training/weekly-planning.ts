@@ -1,3 +1,8 @@
+import {
+  weeklyOutput,
+  permittedWeeklyChoice,
+  supportingWorkload,
+} from "./weekly-policy";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type {
@@ -405,6 +410,75 @@ export function weeklyPlanning(
     !!lastSync &&
     Date.parse(lastSync) <= now.getTime() &&
     now.getTime() - Date.parse(lastSync) <= 2 * 86400000;
+  const support = supportingWorkload(weeks, shiftDay(start, -7));
+  const reductionEvidence: WeeklyPlanning["selectionPolicy"]["reductionEvidence"] =
+    [];
+  if (recovery.status === "caution")
+    reductionEvidence.push({
+      code: "recovery_caution",
+      detail: recovery.notes[0],
+    });
+  if (
+    checks.some(
+      (c) =>
+        c.day <= today &&
+        c.day >= shiftDay(today, -6) &&
+        (c.pain > 0 || c.fatigue > 2 || c.soreness > 2),
+    )
+  )
+    reductionEvidence.push({
+      code: "reported_recovery",
+      detail: "Recent reported pain, fatigue or soreness calls for review.",
+    });
+  if (support.increased)
+    reductionEvidence.push({
+      code: "supporting_increase",
+      detail: `Supporting training rose from a recent ${support.baselineMinutes!.toFixed(1)} min/week average to ${support.recentMinutes.toFixed(1)} min (${Math.round(support.change! * 100)}% increase).`,
+    });
+  if (load.latest.hardDays > 3 || (load.change !== null && load.change > 0.15))
+    reductionEvidence.push({
+      code: "combined_load",
+      detail:
+        "Observed rated effort growth or more than three rated hard days requires review.",
+    });
+  const plannedReview = reviewPlannedWeek(
+    recommendation.calendar,
+    recommendation.plan,
+    load,
+  );
+  if (
+    plannedReview.hardDays > 3 ||
+    (plannedReview.baselineAu &&
+      plannedReview.estimatedAu > plannedReview.baselineAu * 1.15)
+  )
+    reductionEvidence.push({
+      code: "planned_load",
+      detail:
+        "The proposed week exceeds the configured hard-day or combined effort threshold.",
+    });
+  if (reference && !completed)
+    reductionEvidence.push({
+      code: "incomplete_running",
+      detail: recentReference
+        ? "The completed week has less than 90% of its planned running distance."
+        : "Re-establish a current running baseline after the gap.",
+    });
+  if (!fresh)
+    reductionEvidence.push({
+      code: "stale_data",
+      detail: "Garmin data is missing or over two days old.",
+    });
+  if (gate.blocked || referenceAffected)
+    reductionEvidence.push({
+      code: "calendar_restriction",
+      detail: gate.reason || "A race or break affects the baseline.",
+    });
+  const selectionPolicy = { supportingWorkload: support, reductionEvidence };
+  reasons.push(
+    support.increased
+      ? reductionEvidence.find((e) => e.code === "supporting_increase")!.detail
+      : "Routine Hyrox and cycling are supporting-workload context, not an independent reason to hold a supported running increase.",
+  );
   const history = {
     weeks: weeks.filter((w) => !w.partial),
     sessions: activities
@@ -482,18 +556,35 @@ export function weeklyPlanning(
       : "Too few comparable pace/HR pairs to claim improvement or rewrite intensity targets.",
   ];
   if (row?.review_json && row.evidence_hash === evidenceHash) {
-    const review = JSON.parse(row.review_json) as {
-      choice: WeeklyOptionId;
-      summary: string;
-      observations: string[];
-    };
-    const option = options.find((o) => o.id === review.choice);
-    if (option) {
+    let cached: Record<string, unknown> = {};
+    try {
+      const raw = JSON.parse(row.review_json);
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) cached = raw;
+    } catch {
+      /* Invalid cached analysis falls back locally. */
+    }
+    const parsed = weeklyOutput.safeParse({
+      choice: cached.choice,
+      reason: cached.reason,
+      summary: cached.summary,
+      observations: cached.observations,
+    });
+    const review = parsed.success ? parsed.data : null;
+    const option =
+      review && permittedWeeklyChoice(review, selectionPolicy)
+        ? options.find((o) => o.id === review.choice)
+        : undefined;
+    if (option && review) {
       selected = option;
       source = "ai";
       aiStatus = "ready";
       summary = review.summary;
       observations = review.observations;
+    } else {
+      aiStatus = "corrected";
+      observations.unshift(
+        "The earlier AI selection lacked a verified reason under the current planning rules. This proposal uses the data-based recommendation without another paid request.",
+      );
     }
   }
   if (current) {
@@ -530,5 +621,6 @@ export function weeklyPlanning(
     selected,
     options,
     performance,
+    selectionPolicy,
   };
 }

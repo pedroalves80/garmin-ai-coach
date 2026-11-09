@@ -113,7 +113,7 @@ export function WeeklyPlanReview({
               disabled={pending}
               onClick={() => router.refresh()}
             >
-              Refresh analysis
+              Recheck training data
             </Button>
           </div>
           {!matches && (
@@ -127,12 +127,37 @@ export function WeeklyPlanReview({
               {error}
             </p>
           )}
+          {planning.aiStatus === "corrected" && (
+            <p className="inline-notice">
+              Updated proposal: the earlier AI choice had no verified reason to
+              reduce this recommendation. Routine Hyrox and cycling do not block
+              progression by themselves.
+            </p>
+          )}
           <p className="muted small-text">
             One weekly approval. Daily recovery check-ins and effort ratings are
             optional.
           </p>
           <details className="supporting-details">
             <summary>Why this week · evidence & changes</summary>
+            <p className="muted small-text">
+              Supporting training:{" "}
+              {planning.selectionPolicy.supportingWorkload.recentMinutes.toFixed(
+                1,
+              )}{" "}
+              min last week
+              {planning.selectionPolicy.supportingWorkload.baselineMinutes !==
+              null
+                ? ` versus ${planning.selectionPolicy.supportingWorkload.baselineMinutes.toFixed(1)} min/week across ${planning.selectionPolicy.supportingWorkload.baselineWeeks} prior recorded weeks.`
+                : ". No recorded supporting-workload baseline is available yet."}{" "}
+              Routine supporting work alone does not prevent running
+              progression.
+            </p>
+            {planning.selectionPolicy.reductionEvidence.map((e) => (
+              <p key={e.code} className="muted small-text">
+                {e.detail}
+              </p>
+            ))}
             {planning.observations.map((text, i) => (
               <p key={`observation-${i}`}>{text}</p>
             ))}
@@ -144,11 +169,13 @@ export function WeeklyPlanReview({
             <p className="muted small-text">
               {planning.aiStatus === "ready"
                 ? "AI selects among checked plans; it cannot invent faster targets or extra volume."
-                : planning.aiStatus === "pending"
-                  ? "The data-based draft is ready now. A background AI review may add its recommendation; it never blocks approval."
-                  : planning.aiStatus === "refreshed"
-                    ? "New evidence arrived after the AI review. This draft uses the updated data without another paid request."
-                    : "The data-based draft remains available without an AI response."}
+                : planning.aiStatus === "corrected"
+                  ? "The earlier AI selection was corrected locally. No extra AI request was made."
+                  : planning.aiStatus === "pending"
+                    ? "The data-based draft is ready now. A background AI review may add its recommendation; it never blocks approval."
+                    : planning.aiStatus === "refreshed"
+                      ? "New evidence arrived after the AI review. This draft uses the updated data without another paid request."
+                      : "The data-based draft remains available without an AI response."}
             </p>
             <p className="muted small-text">
               Sleep and resting HR inform recovery flags; they do not establish

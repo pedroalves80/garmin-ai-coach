@@ -92,6 +92,7 @@ function worker(
   db: Database.Database,
   choice = "recommended",
   onCall = () => {},
+  reason = "local_recommendation",
 ) {
   return new WeeklyPlanner(
     db,
@@ -100,6 +101,7 @@ function worker(
       return {
         output: {
           choice,
+          reason,
           summary: "Review the prepared stage using completed Garmin training.",
           observations: ["Daily recovery reporting is optional."],
         },
@@ -269,11 +271,23 @@ test("an active week and daily moves are never replaced by automatic preparation
   );
 });
 
-test("once-weekly AI review selects only a checked plan, caches across restarts, and needs human approval", async (t) => {
+test("evidence-backed AI consolidation caches across restarts and still needs human approval", async (t) => {
   const f = fixture(t);
+  f.repo.saveCheckIn({
+    day: start,
+    fatigue: 3,
+    soreness: 2,
+    pain: 0,
+    notes: "",
+  });
   let calls = 0;
   assert.equal(
-    await worker(f.db, "consolidate", () => calls++).tick(),
+    await worker(
+      f.db,
+      "consolidate",
+      () => calls++,
+      "reported_recovery",
+    ).tick(),
     "reviewed",
   );
   assert.equal(await worker(f.db, "recommended", () => calls++).tick(), "done");
@@ -422,3 +436,144 @@ for (const period of ["day", "month"] as const)
       true,
     );
   });
+
+test("routine Hyrox and cycling do not authorize AI consolidation of a supported running increase", async (t) => {
+  const f = fixture(t);
+  f.db
+    .prepare(
+      "UPDATE activities SET duration_seconds=? WHERE sport_type='hyrox'",
+    )
+    .run(144 * 60);
+  f.db
+    .prepare(
+      "UPDATE activities SET duration_seconds=? WHERE sport_type='cycling'",
+    )
+    .run(210 * 60);
+  const p = weeklyPlanning(f.db, now);
+  assert.equal(p.selectionPolicy.supportingWorkload.increased, false);
+  assert(Math.abs(p.selectionPolicy.supportingWorkload.change ?? 1) < 0.001);
+  assert.equal(p.selectionPolicy.reductionEvidence.length, 0);
+  assert.equal(p.selected.plan.targetKm, 26.3);
+  // A plausible narrative and an invented concern cannot override the evidence.
+  assert.equal(
+    await worker(f.db, "consolidate", () => {}, "supporting_increase").tick(),
+    "failed",
+  );
+  const after = weeklyPlanning(f.db, now);
+  assert.equal(after.selected.plan.targetKm, 26.3);
+  assert.equal(after.source, "local");
+  assert.equal(acceptPreparedWeek(f.db, after.token, now).saved, true);
+});
+
+test("a genuine increase in supporting work remains a valid reason for consolidation", async (t) => {
+  const f = fixture(t);
+  f.db
+    .prepare(
+      "UPDATE activities SET duration_seconds=duration_seconds*2 WHERE started_at>='2026-11-02' AND sport_type IN ('cycling','hyrox')",
+    )
+    .run();
+  const p = weeklyPlanning(f.db, now);
+  assert.equal(p.selectionPolicy.supportingWorkload.increased, true);
+  assert.equal(p.selectionPolicy.supportingWorkload.change, 1);
+  assert(
+    p.selectionPolicy.reductionEvidence.some(
+      (e) => e.code === "supporting_increase",
+    ),
+  );
+  assert.equal(p.selected.plan.targetKm, 25);
+  assert.equal(
+    await worker(f.db, "consolidate", () => {}, "supporting_increase").tick(),
+    "reviewed",
+  );
+  assert.equal(weeklyPlanning(f.db, now).source, "ai");
+});
+
+for (const reason of [null, "supporting_increase", "local_recommendation"])
+  test(`cached unsupported AI hold (${reason}) is corrected locally without deleting history or spending again`, async (t) => {
+    const f = fixture(t),
+      p = weeklyPlanning(f.db, now);
+    const review = {
+      choice: "consolidate",
+      summary: "Hold at 25 km because Hyrox and cycling exist.",
+      observations: ["Routine sessions."],
+      ...(reason ? { reason } : {}),
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+    f.db
+      .prepare(
+        "INSERT INTO weekly_planning(week_start,evidence_hash,review_json,attempted_at) VALUES(?,?,?,?)",
+      )
+      .run(start, p.evidenceHash, JSON.stringify(review), now.toISOString());
+    const before = f.db.serialize();
+    const corrected = weeklyPlanning(f.db, now);
+    assert.equal(corrected.aiStatus, "corrected");
+    assert.equal(corrected.selected.plan.targetKm, 26.3);
+    assert(!corrected.summary.includes("Hold at 25"));
+    assert.deepEqual(f.db.serialize(), before);
+    let calls = 0;
+    assert.equal(
+      await worker(f.db, "recommended", () => calls++).tick(),
+      "done",
+    );
+    assert.equal(calls, 0);
+    assert.equal(acceptPreparedWeek(f.db, corrected.token, now).saved, true);
+    assert.equal(f.repo.plans().find((w) => w.start === start)?.targetKm, 26.3);
+  });
+
+test("a verified recovery reduction remains available even when supporting volume is routine", async (t) => {
+  const f = fixture(t);
+  f.db
+    .prepare(
+      "UPDATE daily_health SET resting_heart_rate=66 WHERE day>='2026-11-06'",
+    )
+    .run();
+  assert.equal(
+    await worker(f.db, "recovery", () => {}, "recovery_caution").tick(),
+    "reviewed",
+  );
+  const p = weeklyPlanning(f.db, now);
+  assert.equal(p.source, "ai");
+  assert.equal(p.selected.id, "recovery");
+  assert(p.selected.plan.targetKm < 25);
+  assert.equal(acceptPreparedWeek(f.db, p.token, now).saved, true);
+});
+
+test("invalid cached JSON cannot break the weekly planner", (t) => {
+  const f = fixture(t),
+    p = weeklyPlanning(f.db, now);
+  for (const raw of ["null", "[]", "{broken"]) {
+    f.db
+      .prepare(
+        "INSERT OR REPLACE INTO weekly_planning(week_start,evidence_hash,review_json,attempted_at) VALUES(?,?,?,?)",
+      )
+      .run(start, p.evidenceHash, raw, now.toISOString());
+    assert.equal(weeklyPlanning(f.db, now).selected.plan.targetKm, 26.3);
+    assert.equal(weeklyPlanning(f.db, now).aiStatus, "corrected");
+  }
+});
+
+test("an already accepted 25 km week is not replaced when its old AI selection is corrected", (t) => {
+  const f = fixture(t),
+    p = weeklyPlanning(f.db, now);
+  const active = createTrainingPlan(2, start, 375, 270, 25);
+  f.repo.savePlan(active, now);
+  f.db
+    .prepare(
+      "INSERT INTO weekly_planning(week_start,evidence_hash,review_json,attempted_at) VALUES(?,?,?,?)",
+    )
+    .run(
+      start,
+      p.evidenceHash,
+      JSON.stringify({
+        choice: "consolidate",
+        summary: "Legacy",
+        observations: ["Legacy"],
+      }),
+      now.toISOString(),
+    );
+  const before = f.db.serialize(),
+    result = weeklyPlanning(f.db, now);
+  assert.equal(result.needsApproval, false);
+  assert.equal(result.selected.plan.targetKm, 25);
+  assert.deepEqual(f.db.serialize(), before);
+});

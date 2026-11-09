@@ -1,3 +1,4 @@
+import { supportingWorkload } from "./weekly-policy";
 import type { RecoveryEvidence } from "../../shared/types/weekly-planning";
 import type {
   ActivityMeasurement,
@@ -99,13 +100,7 @@ export function assessProgression(input: {
       "hold",
       "Reported fatigue or soreness calls for a steady week. Update recovery when it changes.",
     );
-  const prior = input.weeks.filter((w) => w.start < reference.start);
-  const other = (week: TrainingWeek) =>
-    week.cyclingMinutes + week.hyroxMinutes + week.otherMinutes;
-  const baseline = prior.length
-    ? prior.reduce((s, w) => s + other(w), 0) / prior.length
-    : 0;
-  if (baseline > 0 && other(actual) > baseline * 1.25)
+  if (supportingWorkload(input.weeks, reference.start).increased)
     return result(
       "hold",
       "Cycling, Hyrox or other training time rose substantially. Hold running volume while reviewing the combined workload.",
