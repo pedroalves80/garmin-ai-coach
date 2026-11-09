@@ -77,7 +77,7 @@ export function WeeklyLoadReview({
           ride minimum applies only when riding.
         </p>
         <Link className="text-link" href="/progress">
-          Rate completed training →
+          Optional effort ratings →
         </Link>
       </details>
     </section>

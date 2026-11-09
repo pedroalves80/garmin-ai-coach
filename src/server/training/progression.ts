@@ -1,3 +1,4 @@
+import type { RecoveryEvidence } from "../../shared/types/weekly-planning";
 import type {
   ActivityMeasurement,
   DailyCheckIn,
@@ -21,6 +22,7 @@ export function assessProgression(input: {
   checkIns: DailyCheckIn[];
   activities: ActivityMeasurement[];
   lastSync: string | null;
+  recovery?: RecoveryEvidence;
   load?: ReturnType<typeof combinedLoadReview>;
 }): ProgressionDecision {
   const today = calendarDate(input.now);
@@ -83,15 +85,19 @@ export function assessProgression(input: {
       "hold",
       "Less than 90% of the saved running distance was recorded. Repeat or review the week before increasing.",
     );
-  if (recent.length < 3 || !recent.some((x) => x.day >= shiftDay(today, -1)))
+  const reportedRecovery =
+    recent.length > 0 && recent.some((x) => x.day >= shiftDay(today, -6));
+  if (input.recovery?.status === "caution")
+    return result("hold", input.recovery.notes[0]);
+  if (!reportedRecovery && input.recovery?.status !== "supportive")
     return result(
       "hold",
-      "Log at least three check-ins over the last seven days, including today or yesterday, to review recovery.",
+      "Recovery is unreported and Garmin coverage is incomplete. A steady reviewed week can still be saved; daily check-ins are optional.",
     );
   if (recent.some((x) => x.fatigue > 2 || x.soreness > 2))
     return result(
       "hold",
-      "Recovery check-ins are not consistently low-fatigue yet. Keep volume steady.",
+      "Reported fatigue or soreness calls for a steady week. Update recovery when it changes.",
     );
   const prior = input.weeks.filter((w) => w.start < reference.start);
   const other = (week: TrainingWeek) =>
@@ -104,8 +110,15 @@ export function assessProgression(input: {
       "hold",
       "Cycling, Hyrox or other training time rose substantially. Hold running volume while reviewing the combined workload.",
     );
-  if (input.load && !input.load.cleared)
-    return result("hold", input.load.reasons[0]);
+  if (
+    input.load &&
+    (input.load.latest.hardDays > 3 ||
+      (input.load.change !== null && input.load.change > 0.15))
+  )
+    return result(
+      "hold",
+      "Recorded combined effort calls for consolidation before adding running volume.",
+    );
   const nextMilestone = volumeMilestones[Math.min(reference.weekNumber, 29)];
   if ((reference.weekNumber + 1) % 4 === 0 && nextMilestone < km!)
     return result(
@@ -171,7 +184,7 @@ export function assessProgression(input: {
         return (
           week &&
           week.runningKm >= planKm(p) * 0.9 &&
-          recovery.length >= 2 &&
+          (recovery.length > 0 || input.recovery?.status === "supportive") &&
           recovery.every((c) => !c.pain && c.fatigue <= 2 && c.soreness <= 2) &&
           (!input.load ||
             (loadWeek &&
@@ -197,7 +210,7 @@ export function assessProgression(input: {
   }
   return result(
     "increase",
-    "The completed week and recent check-ins support considering a small increase. Confirm the next week manually.",
+    "The completed running week and available recovery evidence support a small proposed increase. Review the prepared week once before it becomes active.",
     Math.round(Math.min(80, km! + Math.min(2, km! * 0.05)) * 10) / 10,
   );
 }

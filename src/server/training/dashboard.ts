@@ -1,3 +1,6 @@
+import type Database from "better-sqlite3";
+import { weeklyPlanning, healthEvidence } from "./weekly-planning";
+import { garminRecovery } from "./recovery";
 import { CommitmentRepository } from "./commitment-repository";
 import { returnReady } from "./commitments";
 import { calendarGate, eventOnlyPlan } from "../../shared/commitment-calendar";
@@ -50,8 +53,10 @@ export function workoutCompletion(
   });
 }
 
-export function trainingDashboardData(now = new Date()) {
-  const sqlite = getDatabase();
+export function trainingDashboardData(
+  now = new Date(),
+  sqlite: Database.Database = getDatabase(),
+) {
   const garmin = new GarminRepository(sqlite),
     repository = new TrainingRepository(sqlite);
   const activities = garmin
@@ -77,12 +82,9 @@ export function trainingDashboardData(now = new Date()) {
     );
   const calendarPlan =
     currentPlan ?? (hasCommitments ? eventOnlyPlan(monday, 375, 270) : null);
-  const previewPlan =
-    currentPlan ??
-    [...plans]
-      .filter((p) => p.start > monday)
-      .sort((a, b) => a.start.localeCompare(b.start))[0] ??
-    null;
+  const weeklyRecommendation = weeklyPlanning(sqlite, now);
+  const recoveryEvidence = garminRecovery(healthEvidence(sqlite, today), today);
+  const previewPlan = currentPlan ?? weeklyRecommendation.selected.plan;
   const completed = weeks.filter((w) => !w.partial);
   const average = completed.reduce((sum, w) => sum + w.runningKm, 0) / 4;
   const recent = completed.at(-1)!,
@@ -123,6 +125,7 @@ export function trainingDashboardData(now = new Date()) {
     load,
     now,
     lastSync,
+    recoveryEvidence,
   );
   const gate = calendarGate(commitments, today, monday);
   const reference = [...plans]
@@ -147,6 +150,7 @@ export function trainingDashboardData(now = new Date()) {
     activities,
     lastSync,
     load,
+    recovery: recoveryEvidence,
   });
   if (gate.blocked || referenceAffected) {
     progression.decision = "hold";
@@ -157,6 +161,8 @@ export function trainingDashboardData(now = new Date()) {
     (s) => s.session.sport === "running",
   )?.session;
   return {
+    weeklyRecommendation,
+    recoveryEvidence,
     today,
     commitments,
     calendarGate: gate,

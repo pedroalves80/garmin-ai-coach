@@ -3,6 +3,7 @@ import type { DashboardData } from "@/server/dashboard/data";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import { MetricCard } from "@/components/molecules/MetricCard";
 import { Icon } from "@/components/atoms/Icon";
+import { WeeklyPlanReview } from "./WeeklyPlanReview";
 import { SessionCard } from "../molecules/SessionCard";
 import { DailyCoachSummary } from "./DailyCoachSummary";
 import { RecoveryCheckIn } from "./RecoveryCheckIn";
@@ -31,6 +32,7 @@ export function TodayOverview({
   const target = training.plannedKm;
   return (
     <div className="screen-stack">
+      <WeeklyPlanReview planning={training.weeklyRecommendation} compact />
       <section className="today-hero" aria-labelledby="today-run-heading">
         <div className="hero-content">
           <span className="hero-label">

@@ -1,3 +1,4 @@
+import { WeeklyPlanner, weeklyOpenAIAdapter } from "../coach/weekly";
 import Database from "better-sqlite3";
 import { getConfig } from "../config";
 import { getDatabase } from "../db/client";
@@ -26,6 +27,17 @@ async function main() {
   const db = getDatabase(),
     controller = new AbortController();
   const coach = new AutomaticCoach(db, coachService(), !!config.OPENAI_API_KEY);
+  const weekly = new WeeklyPlanner(
+    db,
+    async (input) => {
+      if (!config.OPENAI_API_KEY) throw new Error("Weekly AI disabled");
+      return weeklyOpenAIAdapter(
+        config.OPENAI_API_KEY,
+        config.OPENAI_MODEL,
+      )(input);
+    },
+    !!config.OPENAI_API_KEY,
+  );
   const scheduler = new GarminScheduler(
     db,
     (signal) => syncGarminData(false, signal),
@@ -48,6 +60,9 @@ async function main() {
             "Automatic Garmin sync failed; the next attempt is scheduled. See the Garmin panel.",
           );
         if (!stopping) {
+          const weeklyResult = await weekly.tick().catch(() => "failed");
+          if (weeklyResult === "reviewed")
+            console.info("Weekly training proposal ready for approval.");
           const review = await coach.tick();
           if (review === "reviewed")
             console.info("Daily coach recommendation ready for review.");

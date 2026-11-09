@@ -66,13 +66,13 @@ export function combinedLoadReview(weeks: LoadWeek[]) {
   const reasons: string[] = [];
   if (!baseline.length)
     reasons.push(
-      "Rate at least two completed training weeks to establish combined-effort context before increasing.",
+      "Session effort ratings are optional. Recorded training duration and sport distribution provide context while measured combined effort is unavailable.",
     );
   if (latest.sessions === 0)
     reasons.push("No training sessions recorded in the last completed week.");
   if (latest.unknownSessions > 0 || latest.coverage < 0.8)
     reasons.push(
-      "Log session effort for the completed week; missing effort or duration is unknown load.",
+      "Some session effort is unreported. Missing effort is unknown, not zero; it does not prevent saving a steady week.",
     );
   if (latest.hardDays > 3)
     reasons.push(

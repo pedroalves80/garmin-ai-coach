@@ -87,6 +87,7 @@ export function migrateDatabase(sqlite: Database.Database) {
   CREATE TABLE IF NOT EXISTS training_availability(day TEXT PRIMARY KEY,slots_json TEXT NOT NULL,reason TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS schedule_edit_history(id TEXT PRIMARY KEY,created_at TEXT NOT NULL,summary TEXT NOT NULL,reason TEXT,days_json TEXT NOT NULL,before_json TEXT NOT NULL,after_json TEXT NOT NULL,context_json TEXT NOT NULL,undone_at TEXT);
   CREATE INDEX IF NOT EXISTS schedule_edit_history_created_idx ON schedule_edit_history(created_at);
+  CREATE TABLE IF NOT EXISTS weekly_planning(week_start TEXT PRIMARY KEY,evidence_hash TEXT NOT NULL,review_json TEXT,attempted_at TEXT NOT NULL,error TEXT,accepted_token TEXT,accepted_plan_hash TEXT);
   CREATE TABLE IF NOT EXISTS automatic_coach(day TEXT PRIMARY KEY,context_hash TEXT NOT NULL,attempted_at TEXT NOT NULL,error TEXT);
   CREATE TABLE IF NOT EXISTS race_events(id TEXT PRIMARY KEY,day TEXT NOT NULL,item_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS training_pauses(id TEXT PRIMARY KEY,start TEXT NOT NULL,item_json TEXT NOT NULL);

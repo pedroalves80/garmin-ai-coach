@@ -41,15 +41,15 @@ export function DailyCoachSummary({ today }: { today: string }) {
           ? "Your review needs refreshing"
           : review
             ? "Today's recommendation"
-            : "Start with your recovery"}
+            : "Based on your training"}
       </h2>
       <p className="muted">
         {stale
           ? "New training or recovery data arrived after the saved review. Request a fresh recommendation in Coach."
           : (review?.summary ??
             (status?.automatic?.enabled
-              ? "Save this week, sync Garmin and log today’s check-in. The background coach will prepare one daily recommendation. Sunday remains rest."
-              : "Log your check-in and request a review in Coach when you need guidance."))}
+              ? "Accept the prepared week once. Garmin sync supports background coaching; recovery updates are optional. Sunday remains rest."
+              : "Your training and Garmin recovery data inform reviews. Request a review in Coach when needed; daily check-ins are optional."))}
       </p>
       {review && (
         <p className="muted small-text">

@@ -1,4 +1,6 @@
 import { prepare } from "../db/statements";
+import { garminRecovery } from "../training/recovery";
+import { healthEvidence } from "../training/weekly-planning";
 import { recoveryWarnings } from "../../shared/schedule-editing";
 import { CommitmentRepository } from "../training/commitment-repository";
 import { eventOnlyPlan, calendarGate } from "../../shared/commitment-calendar";
@@ -40,6 +42,7 @@ function raceSummary(r: import("../../shared/types/commitments").RaceEvent) {
 export function coachContext(sqlite: Database.Database, now: Date) {
   const day = calendarDate(now),
     monday = mondayOf(day);
+  const recoveryEvidence = garminRecovery(healthEvidence(sqlite, day), day);
   const garmin = new GarminRepository(sqlite);
   const training = new TrainingRepository(sqlite);
   const activities = garmin
@@ -85,6 +88,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     load,
     now,
     lastSync,
+    recoveryEvidence,
   );
   const scheduleRepository = new ScheduleRepository(sqlite);
   const calendar = plan
@@ -108,7 +112,9 @@ export function coachContext(sqlite: Database.Database, now: Date) {
         (s) => s.session.sport === "running" && s.status === "recorded",
       ) ?? false)
     : todayActivities.some((a) => sportGroup(a) === "running");
-  const todayCheckIn = checkIns.find((c) => c.day === day) ?? null;
+  const todayCheckIn = checkIns[0] ?? null;
+  const recoveryAvailable =
+    !!todayCheckIn || recoveryEvidence.status === "supportive";
   const pain = checkIns.some((c) => c.day >= shiftDay(day, -2) && c.pain > 0);
   const stale =
     !lastSync || now.getTime() - Date.parse(lastSync) > 2 * 86400000;
@@ -133,12 +139,12 @@ export function coachContext(sqlite: Database.Database, now: Date) {
             ? "No run is scheduled today. Review supporting training without adding a run."
             : "Save a reviewed week before requesting workout changes.",
     );
-  } else if (stale || !todayCheckIn) {
+  } else if (stale || !recoveryAvailable) {
     allowed = ["follow", "rest"];
     constraints.push(
       stale
         ? "Sync Garmin before changing today's workout; the training data is missing or over two days old."
-        : "Log today's check-in before adjusting the workout.",
+        : "Daily check-ins are optional. With incomplete Garmin recovery data, follow the accepted week or reduce supporting work; report symptoms when needed.",
     );
   }
   if (
@@ -170,27 +176,30 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     !!todaySchedule &&
     (todaySchedule.dayOffset !== 6 || !!workout?.race) &&
     !["paused", "return_review"].includes(todaySchedule.rule?.phase ?? "") &&
-    !stale &&
-    !!todayCheckIn;
+    !stale;
   const moves: Partial<Record<CoachAction, ScheduleChange[]>> = {};
   const moveWarnings: Partial<Record<CoachAction, string[]>> = {};
   if (canSchedule && !pain && !workout?.race) {
     const secondary = todaySchedule.sessions.find(
       (s) => s.session.sport !== "running" && s.status === "planned",
     );
-    const fatigue = Math.max(todayCheckIn!.fatigue, todayCheckIn!.soreness);
-    if (secondary && (!workout || ranToday || fatigue < 4))
+    const fatigue = todayCheckIn
+      ? Math.max(todayCheckIn.fatigue, todayCheckIn.soreness)
+      : null;
+    const notHigh = fatigue === null || fatigue < 4;
+    if (secondary && (!workout || ranToday || notHigh))
       allowed.push("skip_secondary");
     if (
       !accepted &&
       secondary?.session.sport === "hyrox" &&
       !todaySchedule.unavailableSlots?.includes("later") &&
-      fatigue < 4 &&
+      recoveryAvailable &&
+      notHigh &&
       todaySchedule.recorded.length < 2 &&
       !todaySchedule.recorded.some((r) => r.sport === "cycling")
     )
       allowed.push("cycle");
-    if (workout && !accepted && !ranToday && fatigue < 4) {
+    if (workout && !accepted && !ranToday && recoveryAvailable && notHigh) {
       for (let to = todaySchedule.dayOffset + 1; to < 6; to++) {
         try {
           const action = `move_${to}` as CoachAction;
@@ -243,15 +252,18 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   );
   const moderate =
     todayCheckIn && Math.max(todayCheckIn.fatigue, todayCheckIn.soreness) >= 3;
-  if (canSchedule && !pain && (moderate || recentHard)) {
+  if (
+    canSchedule &&
+    !pain &&
+    (moderate || recentHard || recoveryEvidence.status === "caution")
+  ) {
     const secondary = todaySchedule?.sessions.some(
       (s) => s.session.sport !== "running" && s.status === "planned",
     );
     if (
       workout &&
       !ranToday &&
-      todayCheckIn!.fatigue < 4 &&
-      todayCheckIn!.soreness < 4
+      (!todayCheckIn || (todayCheckIn.fatigue < 4 && todayCheckIn.soreness < 4))
     ) {
       allowed =
         workout.type === "quality"
@@ -292,9 +304,10 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     allowed =
       pain ||
       stale ||
-      !todayCheckIn ||
-      todayCheckIn.fatigue >= 4 ||
-      todayCheckIn.soreness >= 4
+      !recoveryAvailable ||
+      (todayCheckIn &&
+        (todayCheckIn.fatigue >= 4 || todayCheckIn.soreness >= 4)) ||
+      recoveryEvidence.status === "caution"
         ? ["rest"]
         : ranToday
           ? ["follow"]
@@ -322,6 +335,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     activities,
     lastSync,
     load,
+    recovery: recoveryEvidence,
   });
   const prior = plans
     .filter((p) => shiftDay(p.start, 7) <= day)
@@ -343,6 +357,11 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   // Explicit allowlist: never send raw activity JSON, locations, names, notes or credentials.
   const payload = {
     day,
+    recoveryEvidence,
+    subjectiveRecovery: {
+      optional: true,
+      lastReportedDay: todayCheckIn?.day ?? null,
+    },
     workoutPreferences: {
       stepTarget: "distance",
       minimumRunKm,
@@ -500,7 +519,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
       !ranToday &&
       (todaySchedule?.recorded.length ?? 0) < 2 &&
       !stale &&
-      (!!todayCheckIn || pain),
+      (recoveryAvailable || pain),
   };
 }
 export type CoachData = ReturnType<typeof coachContext>;

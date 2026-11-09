@@ -20,16 +20,16 @@ export function RecoveryCheckIn({ data }: { data: TrainingDashboardData }) {
   const earliest = new Date(`${data.today}T12:00:00Z`);
   earliest.setUTCDate(earliest.getUTCDate() - 14);
   return (
-    <details className="surface check-in-card">
+    <details className="surface check-in-card" id="recovery-check-in">
       <summary>
         <span>
-          <span className="detail-title">How are you feeling?</span>
+          <span className="detail-title">Recovery update · optional</span>
           <span className="muted small-text detail-subtitle">
-            Your daily recovery check-in
+            Once a week, or when something changes
           </span>
         </span>
         <StatusBadge tone={data.todayCheckIn ? "success" : "info"}>
-          {data.todayCheckIn ? "Logged" : "Not logged"}
+          {data.todayCheckIn ? "Updated" : "Optional"}
         </StatusBadge>
       </summary>
       <form
@@ -72,7 +72,9 @@ export function RecoveryCheckIn({ data }: { data: TrainingDashboardData }) {
         }}
       >
         <p className="muted small-text">
-          Fatigue and soreness: 1 low → 5 high. Pain: 0 none → 10 severe.
+          No daily reporting needed. Update when useful, particularly for pain
+          or unusual fatigue. Fatigue and soreness: 1 low → 5 high. Pain: 0 none
+          → 10 severe.
         </p>
         <div className="check-in-scores">
           {[

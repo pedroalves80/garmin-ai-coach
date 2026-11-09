@@ -1,3 +1,4 @@
+import type { RecoveryEvidence } from "../../shared/types/weekly-planning";
 import { DEFAULT_TARGETS } from "../../shared/types/athlete";
 import type { AthleteProfile, SessionEffort } from "../../shared/types/athlete";
 import type {
@@ -18,6 +19,7 @@ export function developmentReadiness(
   load: ReturnType<typeof combinedLoadReview>,
   now: Date,
   lastSync?: string | null,
+  recovery?: RecoveryEvidence,
 ) {
   const today = calendarDate(now),
     fresh =
@@ -85,8 +87,8 @@ export function developmentReadiness(
     (c) => c.day <= today && c.day >= shiftDay(today, -6),
   );
   const recovered =
-    recent.length >= 3 &&
-    recent.some((c) => c.day >= shiftDay(today, -1)) &&
+    (recent.length > 0 || recovery?.status === "supportive") &&
+    recovery?.status !== "caution" &&
     recent.every((c) => !c.pain && c.fatigue <= 2 && c.soreness <= 2);
   const eligible =
     fresh &&
@@ -94,7 +96,9 @@ export function developmentReadiness(
     adhered &&
     good.length >= 2 &&
     recovered &&
-    load.cleared;
+    (load.cleared ||
+      (load.latest.hardDays <= 3 &&
+        (load.change === null || load.change <= 0.15)));
   return {
     eligible,
     level,
@@ -112,7 +116,8 @@ export function developmentReadiness(
             ? "Complete and rate at least two quality sessions at this level before developing tempo duration."
             : !recovered
               ? "Consolidate while recovery settles."
-              : !load.cleared
+              : load.latest.hardDays > 3 ||
+                  (load.change !== null && load.change > 0.15)
                 ? load.reasons[0]
                 : "Current targets, completed quality sessions and recovery support reviewing the next quality level.",
   };

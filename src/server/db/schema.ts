@@ -140,3 +140,13 @@ export const scheduleEditHistory = sqliteTable("schedule_edit_history", {
   contextJson: text("context_json").notNull(),
   undoneAt: text("undone_at"),
 });
+
+export const weeklyPlanning = sqliteTable("weekly_planning", {
+  weekStart: text("week_start").primaryKey(),
+  evidenceHash: text("evidence_hash").notNull(),
+  reviewJson: text("review_json"),
+  attemptedAt: text("attempted_at").notNull(),
+  error: text("error"),
+  acceptedToken: text("accepted_token"),
+  acceptedPlanHash: text("accepted_plan_hash"),
+});

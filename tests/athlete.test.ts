@@ -173,11 +173,12 @@ test("session-RPE measures intensity across sports, excludes wellness and labels
   assert.equal(weeks.at(-1)!.sessions, 0);
 });
 
-test("missing effort and sharp combined effort growth hold running progression", () => {
+test("optional effort ratings do not block stable progression, while measured combined growth still does", () => {
   const f = returnFixture();
   const missing = combinedLoadReview(measuredLoad(f.activities, [], now));
   assert(!missing.cleared);
-  assert.equal(assessProgression({ ...f, load: missing }).decision, "hold");
+  assert.equal(missing.latest.coverage, 0);
+  assert.equal(assessProgression({ ...f, load: missing }).decision, "increase");
   const raised = f.efforts.map((e) => ({
     ...e,
     rpe: ["e", "f", "g", "h"].includes(e.activityId) ? 8 : 2,

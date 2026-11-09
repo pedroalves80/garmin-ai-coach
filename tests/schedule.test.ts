@@ -388,8 +388,15 @@ test("automatic coach claims once per day across restarts, waits for data and ho
   );
   const worker = () => new AutomaticCoach(db, coach, true, () => now);
   db.prepare("DELETE FROM daily_check_ins").run();
+  db.prepare(
+    "UPDATE sync_state SET last_completed_at='2026-10-20T00:00:00Z'",
+  ).run();
   assert.equal(await worker().tick(), "waiting");
   assert.equal(calls, 0);
+  db.prepare("UPDATE sync_state SET last_completed_at=?").run(
+    now.toISOString(),
+  );
+  assert.equal(await worker().tick(), "reviewed");
   training.saveCheckIn({
     day: "2026-10-26",
     fatigue: 2,
@@ -397,7 +404,7 @@ test("automatic coach claims once per day across restarts, waits for data and ho
     pain: 0,
     notes: "",
   });
-  assert.equal(await worker().tick(), "reviewed");
+  assert.equal(await worker().tick(), "done");
   assert.equal(await worker().tick(), "done");
   assert.equal(calls, 1);
   assert.equal(repo.changes("2026-10-26").length, 0);

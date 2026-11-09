@@ -1827,3 +1827,41 @@ textarea {
   letter-spacing: -0.2px;
   overflow-wrap: anywhere;
 }
+
+.weekly-coach-card {
+  border-color: var(--green, #236449);
+}
+.weekly-evidence {
+  font-variant-numeric: tabular-nums;
+}
+.weekly-history {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+.weekly-history table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.weekly-history caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.weekly-history th,
+.weekly-history td {
+  padding: 0.65rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #e2e7e3);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .weekly-coach-card .action-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .weekly-coach-card .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

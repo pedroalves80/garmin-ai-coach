@@ -1,5 +1,7 @@
 "use client";
 import { applyAvailability } from "@/shared/schedule-editing";
+import { WeeklyPlanReview } from "./WeeklyPlanReview";
+import type { TrainingPlan } from "@/shared/types/metrics";
 import { TrainingCalendarManager } from "./TrainingCalendarManager";
 import { applyCommitments, calendarGate } from "@/shared/commitment-calendar";
 import { useState } from "react";
@@ -98,6 +100,26 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         )
       : null,
   );
+  const prepared = data.weeklyRecommendation.selected;
+  const matchesPrepared =
+    start === prepared.plan.start &&
+    week === prepared.plan.weekNumber &&
+    Number(targetKm) === prepared.plan.targetKm &&
+    parsePace(easy) === prepared.plan.easyPace &&
+    parsePace(tempo) === prepared.plan.tempoPace;
+  function loadPreparedWeek(plan: TrainingPlan = prepared.plan) {
+    setStart(plan.start);
+    setWeek(plan.weekNumber);
+    setTargetKm(String(plan.targetKm));
+    setEasy(formatPace(plan.easyPace));
+    setTempo(formatPace(plan.tempoPace));
+    const index = Math.round(
+      (Date.parse(data.today + "T12:00:00Z") -
+        Date.parse(plan.start + "T12:00:00Z")) /
+        86400000,
+    );
+    setSelectedDay(index >= 0 && index < 7 ? index : 0);
+  }
   let preview = null;
   try {
     if (
@@ -105,18 +127,20 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       !Number.isFinite(Date.parse(`${start}T12:00:00Z`))
     )
       throw new Error("Choose a date");
-    preview = developedPlan(
-      {
-        weekNumber: week,
-        start,
-        easyPace: parsePace(easy),
-        tempoPace: parsePace(tempo),
-        targetKm: Number(targetKm),
-      },
-      data.athlete,
-      data.plans,
-      data.development,
-    );
+    preview = matchesPrepared
+      ? prepared.plan
+      : developedPlan(
+          {
+            weekNumber: week,
+            start,
+            easyPace: parsePace(easy),
+            tempoPace: parsePace(tempo),
+            targetKm: Number(targetKm),
+          },
+          data.athlete,
+          data.plans,
+          data.development,
+        );
   } catch {
     /* Shown next to settings. */
   }
@@ -152,7 +176,10 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
           applyCommitments(
             buildWeekSchedule(
               preview,
-              data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES,
+              data.weekSettings[start] ??
+                (start === data.weeklyRecommendation.start
+                  ? prepared.preferences
+                  : DEFAULT_WEEK_PREFERENCES),
               data.preferences,
             ),
             preview,
@@ -199,6 +226,24 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
 
   return (
     <section className="screen-stack" aria-label="Weekly workout planner">
+      <WeeklyPlanReview
+        planning={data.weeklyRecommendation}
+        matches={matchesPrepared}
+        onUse={() => loadPreparedWeek()}
+        onAccepted={(plan) => {
+          loadPreparedWeek(plan);
+          setSavedKey(
+            settingsKey(
+              plan.start,
+              plan.weekNumber,
+              plan.targetKm,
+              plan.easyPace,
+              plan.tempoPace,
+            ),
+          );
+          setMessage("Your week is active. No daily check-in is required.");
+        }}
+      />
       <TrainingCalendarManager data={data} onView={viewDate} />
       {gate.blocked && (
         <p className="inline-notice small-text">{gate.reason}</p>
@@ -207,6 +252,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
         initial.start === start &&
         initial.weekNumber === week &&
         !matchesGeneratedWeek(initial) &&
+        data.plans.some((p) => p.start === initial.start) &&
         !saved && (
           <p className="inline-notice small-text">
             This is an updated distance-based draft. Review and save the week to
@@ -364,7 +410,8 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             <p className="muted small-text editor-note">
               Every step uses distance, with at least 5 km per run including
               warm-up and cool-down. Tempo pace sets intensity. Volume increases
-              still need a completed baseline and recovery check-ins.
+              use completed training and available recovery evidence. Daily
+              check-ins are optional.
             </p>
           </div>
         </details>
@@ -411,9 +458,11 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             week is {preview ? planKm(preview).toFixed(1) : "—"} km before race
             and break adjustments.
           </p>
-          <Button disabled={pending || !preview || !!saved} type="submit">
-            {pending ? "Saving…" : "Save reviewed week"}
-          </Button>
+          {!(data.weeklyRecommendation.needsApproval && matchesPrepared) && (
+            <Button disabled={pending || !preview || !!saved} type="submit">
+              {pending ? "Saving…" : "Save edited week"}
+            </Button>
+          )}
         </div>
       </form>
       {message && (
@@ -437,7 +486,12 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
           key={start}
           plan={preview}
           calendar={calendar!}
-          initialWeek={data.weekSettings[start] ?? DEFAULT_WEEK_PREFERENCES}
+          initialWeek={
+            data.weekSettings[start] ??
+            (start === data.weeklyRecommendation.start
+              ? prepared.preferences
+              : DEFAULT_WEEK_PREFERENCES)
+          }
           saved={!!saved}
           today={data.today}
           selectedDay={selectedDay}
