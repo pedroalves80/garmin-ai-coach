@@ -1,0 +1,79 @@
+import { dayOffsetDate } from "./weekly-schedule";
+import { eventOnlyPlan } from "./commitment-calendar";
+import { developedPlan } from "./plan-development";
+import { volumeMilestones } from "./training-plan";
+import type { TrainingPlan } from "./types/metrics";
+import type { AthleteProfile } from "./types/athlete";
+import type { WeekPreferences } from "./types/schedule";
+export function weekMonday(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+    !Number.isFinite(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== day
+  )
+    throw new Error("Choose a valid date");
+  return dayOffsetDate(day, -((date.getUTCDay() + 6) % 7));
+}
+export function weekView(
+  start: string,
+  context: {
+    monday: string;
+    plans: TrainingPlan[];
+    prepared: TrainingPlan;
+    athlete: AthleteProfile;
+  },
+) {
+  const { monday, plans, prepared, athlete } = context;
+  const saved = plans.find((p) => p.start === start);
+  if (saved) return { plan: saved, kind: "reviewed" as const };
+  if (start === monday) return { plan: prepared, kind: "prepared" as const };
+  if (start < monday)
+    return {
+      plan: eventOnlyPlan(start, athlete.easyPace, athlete.tempoPace),
+      kind: "unplanned" as const,
+    };
+  const anchor =
+    [...plans, prepared]
+      .filter((p) => p.start < start)
+      .sort((a, b) => b.start.localeCompare(a.start))[0] ?? prepared;
+  const ahead = Math.max(
+    1,
+    Math.round(
+      (Date.parse(start + "T12:00:00Z") -
+        Date.parse(anchor.start + "T12:00:00Z")) /
+        (7 * 86400000),
+    ),
+  );
+  const stage = Math.min(volumeMilestones.length, anchor.weekNumber + ahead);
+  const plan = developedPlan(
+    {
+      weekNumber: stage,
+      start,
+      easyPace: anchor.easyPace,
+      tempoPace: anchor.tempoPace,
+      targetKm: Math.min(anchor.targetKm, volumeMilestones[stage - 1]),
+    },
+    athlete,
+    plans,
+    {
+      eligible: false,
+      level: anchor.development?.qualityLevel ?? 0,
+      referenceStart: null,
+    },
+  );
+  return { plan, kind: "projection" as const };
+}
+export function attendanceForWeek(
+  start: string,
+  weeks: Record<string, WeekPreferences>,
+  preparedStart: string,
+  prepared: WeekPreferences,
+) {
+  if (weeks[start]) return weeks[start];
+  const previous = Object.keys(weeks)
+    .filter((w) => w < start)
+    .sort()
+    .at(-1);
+  return previous && previous >= preparedStart ? weeks[previous] : prepared;
+}

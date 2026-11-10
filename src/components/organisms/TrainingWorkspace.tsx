@@ -1,5 +1,8 @@
 "use client";
 import { applyAvailability } from "@/shared/schedule-editing";
+import { WeekNavigator } from "../molecules/WeekNavigator";
+import { RaceWeekNotice } from "../molecules/RaceWeekNotice";
+import { weekView, weekMonday, attendanceForWeek } from "@/shared/week-view";
 import { WeeklyPlanReview } from "./WeeklyPlanReview";
 import type { TrainingPlan } from "@/shared/types/metrics";
 import { TrainingCalendarManager } from "./TrainingCalendarManager";
@@ -23,7 +26,6 @@ import { StatusBadge } from "@/components/atoms/StatusBadge";
 
 import { WeeklySchedule } from "./WeeklySchedule";
 import { buildWeekSchedule } from "@/shared/weekly-schedule";
-import { DEFAULT_WEEK_PREFERENCES } from "@/shared/types/schedule";
 
 function offset(day: string, days: number) {
   const d = new Date(`${day}T12:00:00Z`);
@@ -101,6 +103,28 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       : null,
   );
   const prepared = data.weeklyRecommendation.selected;
+  const view = weekView(start, {
+    monday: data.monday,
+    plans: data.plans,
+    prepared: prepared.plan,
+    athlete: data.athlete,
+  });
+  const viewAttendance = attendanceForWeek(
+    start,
+    data.weekSettings,
+    data.monday,
+    prepared.preferences,
+  );
+  const matchesView =
+    week === view.plan.weekNumber &&
+    Number(targetKm) === view.plan.targetKm &&
+    parsePace(easy) === view.plan.easyPace &&
+    parsePace(tempo) === view.plan.tempoPace;
+  const readOnlyView =
+    matchesView &&
+    (view.kind === "projection" ||
+      start < data.monday ||
+      view.kind === "unplanned");
   const matchesPrepared =
     start === prepared.plan.start &&
     week === prepared.plan.weekNumber &&
@@ -127,20 +151,22 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       !Number.isFinite(Date.parse(`${start}T12:00:00Z`))
     )
       throw new Error("Choose a date");
-    preview = matchesPrepared
-      ? prepared.plan
-      : developedPlan(
-          {
-            weekNumber: week,
-            start,
-            easyPace: parsePace(easy),
-            tempoPace: parsePace(tempo),
-            targetKm: Number(targetKm),
-          },
-          data.athlete,
-          data.plans,
-          data.development,
-        );
+    preview = matchesView
+      ? view.plan
+      : matchesPrepared
+        ? prepared.plan
+        : developedPlan(
+            {
+              weekNumber: week,
+              start,
+              easyPace: parsePace(easy),
+              tempoPace: parsePace(tempo),
+              targetKm: Number(targetKm),
+            },
+            data.athlete,
+            data.plans,
+            data.development,
+          );
   } catch {
     /* Shown next to settings. */
   }
@@ -174,14 +200,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       ? data.reviewedCalendars[start]
       : applyAvailability(
           applyCommitments(
-            buildWeekSchedule(
-              preview,
-              data.weekSettings[start] ??
-                (start === data.weeklyRecommendation.start
-                  ? prepared.preferences
-                  : DEFAULT_WEEK_PREFERENCES),
-              data.preferences,
-            ),
+            buildWeekSchedule(preview, viewAttendance, data.preferences),
             preview,
             data.commitments,
             data.athlete.targets,
@@ -203,17 +222,40 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
     0,
   );
   const gate = calendarGate(data.commitments, data.today, start);
+  function browseWeek(
+    monday: string,
+    day: number | undefined = undefined,
+    baseline = false,
+  ) {
+    const next = weekView(monday, {
+      monday: data.monday,
+      plans: data.plans,
+      prepared: prepared.plan,
+      athlete: data.athlete,
+    });
+    loadPreparedWeek(baseline ? { ...next.plan, targetKm: 20 } : next.plan);
+    setSelectedDay(
+      day ??
+        (monday === data.monday
+          ? Math.round(
+              (Date.parse(data.today + "T12:00:00Z") -
+                Date.parse(monday + "T12:00:00Z")) /
+                86400000,
+            )
+          : 0),
+    );
+    setMessage("");
+  }
   function viewDate(day: string, baseline = false) {
-    const d = new Date(`${day}T12:00:00Z`),
-      index = (d.getUTCDay() + 6) % 7;
-    const monday = offset(day, -index);
-    const p = data.plans.find((p) => p.start === monday) ?? initial;
-    setStart(monday < data.monday ? data.monday : monday);
-    setWeek(p?.weekNumber ?? 1);
-    setTargetKm(String(baseline ? 20 : (p?.targetKm ?? 25)));
-    setEasy(formatPace(p?.easyPace ?? data.athlete.easyPace));
-    setTempo(formatPace(p?.tempoPace ?? data.athlete.tempoPace));
-    setSelectedDay(monday < data.monday ? 0 : index);
+    const monday = weekMonday(day);
+    browseWeek(
+      monday,
+      Math.round(
+        (Date.parse(day + "T12:00:00Z") - Date.parse(monday + "T12:00:00Z")) /
+          86400000,
+      ),
+      baseline,
+    );
     requestAnimationFrame(() =>
       document.getElementById("day-schedule-heading")?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -226,28 +268,46 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
 
   return (
     <section className="screen-stack" aria-label="Weekly workout planner">
-      <WeeklyPlanReview
-        planning={data.weeklyRecommendation}
-        matches={matchesPrepared}
-        onUse={() => loadPreparedWeek()}
-        onAccepted={(plan) => {
-          loadPreparedWeek(plan);
-          setSavedKey(
-            settingsKey(
-              plan.start,
-              plan.weekNumber,
-              plan.targetKm,
-              plan.easyPace,
-              plan.tempoPace,
-            ),
-          );
-          setMessage("Your week is active. No daily check-in is required.");
-        }}
+      <WeekNavigator
+        start={start}
+        current={data.monday}
+        min={[data.monday, ...data.plans.map((p) => p.start)].sort()[0]}
+        max={weekMonday(offset(data.monday, 730))}
+        onChange={(monday) => browseWeek(monday)}
       />
-      <TrainingCalendarManager data={data} onView={viewDate} />
-      {gate.blocked && (
-        <p className="inline-notice small-text">{gate.reason}</p>
+      {start === data.monday && (
+        <WeeklyPlanReview
+          planning={data.weeklyRecommendation}
+          matches={matchesPrepared}
+          onUse={() => loadPreparedWeek()}
+          onAccepted={(plan) => {
+            loadPreparedWeek(plan);
+            setSavedKey(
+              settingsKey(
+                plan.start,
+                plan.weekNumber,
+                plan.targetKm,
+                plan.easyPace,
+                plan.tempoPace,
+              ),
+            );
+            setMessage("Your week is active. No daily check-in is required.");
+          }}
+        />
       )}
+      <TrainingCalendarManager data={data} onView={viewDate} />
+      {preview && (
+        <RaceWeekNotice
+          start={start}
+          races={data.commitments.races}
+          baseKm={planKm(preview)}
+          effectiveKm={effectiveKm}
+        />
+      )}
+      {gate.blocked &&
+        (start === data.monday || calendar?.days.some((d) => !!d.rule)) && (
+          <p className="inline-notice small-text">{gate.reason}</p>
+        )}
       {initial &&
         initial.start === start &&
         initial.weekNumber === week &&
@@ -326,7 +386,13 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             </h2>
           </div>
           <StatusBadge tone={saved ? "success" : "info"}>
-            {saved ? "Reviewed week" : "Draft preview"}
+            {saved
+              ? "Reviewed week"
+              : view.kind === "projection" && matchesView
+                ? "Future preview"
+                : start < data.monday
+                  ? "Past week"
+                  : "Draft preview"}
           </StatusBadge>
         </div>
         <div className="plan-totals">
@@ -344,6 +410,21 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
               : "Build gradually. Review before progressing."}
           </span>
         </div>
+        {readOnlyView && (
+          <p className="inline-notice small-text">
+            {start < data.monday
+              ? "Past week · browsing keeps its saved steps and history intact."
+              : "Future preview · mileage is held at the latest baseline, with race and break rules applied. Stage and distance are provisional; the coach prepares the final week from completed training."}{" "}
+            Browsing does not save or activate a week.
+          </p>
+        )}
+        <p className="muted small-text">
+          Stage {week} ceiling: {volumeMilestones[week - 1]} km · baseline:{" "}
+          {preview ? planKm(preview).toFixed(1) : "—"} km
+          {Math.abs(effectiveKm - (preview ? planKm(preview) : 0)) > 0.01
+            ? ` · calendar after adjustments: ${effectiveKm.toFixed(1)} km`
+            : ""}
+        </p>
         <details className="plan-settings">
           <summary>Adjust week & pace settings</summary>
           <div className="training-form editor-fields">
@@ -356,12 +437,6 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
                   const n = Number(e.target.value);
                   setWeek(n);
                   setTargetKm(String(volumeMilestones[n - 1]));
-                  setStart(
-                    offset(
-                      initial?.start ?? offset(data.monday, 7),
-                      (n - (initial?.weekNumber ?? 1)) * 7,
-                    ),
-                  );
                   setSelectedDay(0);
                 }}
               >
@@ -383,18 +458,6 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
                 step="0.1"
                 value={targetKm}
                 onChange={(e) => setTargetKm(e.target.value)}
-              />
-            </label>
-            <label htmlFor="plan-start">
-              Week starting · Monday
-              <input
-                id="plan-start"
-                type="date"
-                required
-                min={data.monday}
-                max={offset(data.monday, 730)}
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
               />
             </label>
             <label htmlFor="tempo-pace">
@@ -458,11 +521,13 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
             week is {preview ? planKm(preview).toFixed(1) : "—"} km before race
             and break adjustments.
           </p>
-          {!(data.weeklyRecommendation.needsApproval && matchesPrepared) && (
-            <Button disabled={pending || !preview || !!saved} type="submit">
-              {pending ? "Saving…" : "Save edited week"}
-            </Button>
-          )}
+          {!readOnlyView &&
+            start >= data.monday &&
+            !(data.weeklyRecommendation.needsApproval && matchesPrepared) && (
+              <Button disabled={pending || !preview || !!saved} type="submit">
+                {pending ? "Saving…" : "Save edited week"}
+              </Button>
+            )}
         </div>
       </form>
       {message && (
@@ -486,12 +551,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
           key={start}
           plan={preview}
           calendar={calendar!}
-          initialWeek={
-            data.weekSettings[start] ??
-            (start === data.weeklyRecommendation.start
-              ? prepared.preferences
-              : DEFAULT_WEEK_PREFERENCES)
-          }
+          initialWeek={viewAttendance}
           saved={!!saved}
           today={data.today}
           selectedDay={selectedDay}

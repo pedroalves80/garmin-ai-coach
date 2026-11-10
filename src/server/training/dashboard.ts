@@ -222,9 +222,15 @@ export function trainingDashboardData(
     todaySessions,
     calendar,
     reviewedCalendars: Object.fromEntries(
-      plans
-        .filter((p) => p.start >= monday)
-        .map((p) => [p.start, trainingCalendar(sqlite, p, activities, now)]),
+      plans.map((p) => [p.start, trainingCalendar(sqlite, p, activities, now)]),
+    ),
+    calendarBaselines: Object.fromEntries(
+      plans.map((p) => [
+        p.start,
+        trainingCalendar(sqlite, p, activities, now, undefined, {
+          canonical: true,
+        }),
+      ]),
     ),
     previewCalendar: previewPlan
       ? trainingCalendar(sqlite, previewPlan, activities, now)

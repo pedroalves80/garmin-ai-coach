@@ -1865,3 +1865,58 @@ textarea {
     flex-wrap: wrap;
   }
 }
+
+.week-navigator {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.week-navigation-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.week-navigator label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.week-navigator input {
+  min-width: 0;
+  max-width: 100%;
+}
+.race-week-notice {
+  border-left: 4px solid var(--green);
+}
+.race-impact-table {
+  overflow-x: auto;
+}
+.race-impact-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.race-impact-table th,
+.race-impact-table td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .week-navigation-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .week-navigation-buttons .button {
+    padding: 0.65rem 0.4rem;
+    font-size: 0.8rem;
+    min-width: 0;
+  }
+  .week-navigator label {
+    width: 100%;
+  }
+}

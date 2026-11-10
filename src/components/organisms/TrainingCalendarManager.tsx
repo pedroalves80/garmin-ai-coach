@@ -1,4 +1,7 @@
 "use client";
+import { raceImpactWeeks, compareRaceImpact } from "@/shared/race-impact";
+import { weekView, attendanceForWeek } from "@/shared/week-view";
+import { raceWindow } from "@/shared/commitment-calendar";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
@@ -154,6 +157,53 @@ export function TrainingCalendarManager({
   } catch {
     /* Invalid form fields have native validation. */
   }
+  let raceImpact: ReturnType<typeof compareRaceImpact>[] = [];
+  if (mode === "race") {
+    try {
+      const next = {
+        ...data.commitments,
+        races: [
+          ...data.commitments.races.filter((r) => r.id !== editing),
+          draftRace,
+        ],
+      };
+      raceImpact = raceImpactWeeks(
+        draftRace,
+        data.commitments.races.find((r) => r.id === editing),
+        data.today,
+      ).map((start) => {
+        const plan = weekView(start, {
+          monday: data.monday,
+          plans: data.plans,
+          prepared: data.weeklyRecommendation.selected.plan,
+          athlete: data.athlete,
+        }).plan;
+        const baseline =
+          data.calendarBaselines[start] ??
+          buildWeekSchedule(
+            plan,
+            attendanceForWeek(
+              start,
+              data.weekSettings,
+              data.monday,
+              data.weeklyRecommendation.selected.preferences,
+            ),
+            data.preferences,
+          );
+        return compareRaceImpact({
+          plan,
+          baseline,
+          before: data.commitments,
+          after: next,
+          targets: data.athlete.targets,
+          options: data.calendarOptions,
+          availability: data.availability,
+        });
+      });
+    } catch {
+      /* Invalid draft fields are handled by form validation. */
+    }
+  }
   async function save(body: object, viewDay?: string) {
     setPending(true);
     setMessage("");
@@ -170,7 +220,9 @@ export function TrainingCalendarManager({
       const result = await response.json();
       if (!response.ok) throw Error(result.error ?? "Could not save calendar.");
       setMessage(
-        "Calendar saved. The week and coach now use these commitments.",
+        "action" in body && body.action === "race"
+          ? "Race saved. Preparation and recovery now apply to the weeks shown in the preview. You are still viewing the same week; use View race week to jump to the event."
+          : "Calendar saved. The week and coach now use these commitments.",
       );
       setMode(null);
       setEditing(null);
@@ -256,7 +308,7 @@ export function TrainingCalendarManager({
                     action: "pause",
                     pause: { start, end: end || null, reason },
                   },
-              mode === "race" ? day : start,
+              mode === "race" ? undefined : start,
             );
           }}
         >
@@ -404,6 +456,55 @@ export function TrainingCalendarManager({
                 paused after the end date until you review your return. Illness
                 and injury need individual recovery decisions; the app cannot
                 clear you medically.
+              </p>
+            </div>
+          )}
+          {mode === "race" && raceImpact.length > 0 && (
+            <div
+              className="inline-notice small-text"
+              aria-label="Weeks affected by this race"
+            >
+              <strong>Before you save · affected weeks</strong>
+              <p>
+                {draftRace.priority === "goal" ? "Goal" : "Training"}{" "}
+                {draftRace.terrain} event · {raceWindow(draftRace).lead}-day
+                preparation window, then {raceWindow(draftRace).recovery} days
+                of recovery.{" "}
+                {raceImpact.some((w) => w.start === data.monday && w.changed)
+                  ? "This changes the current week's calendar too."
+                  : "Your current week has no new calendar changes in this preview."}
+              </p>
+              <div className="race-impact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Week of</th>
+                      <th>Before → after</th>
+                      <th>Supporting sessions removed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {raceImpact.map((w) => (
+                      <tr key={w.start}>
+                        <th>
+                          {w.start}
+                          {w.start === data.monday ? " · this week" : ""}
+                        </th>
+                        <td>
+                          {w.beforeKm.toFixed(1)} → {w.afterKm.toFixed(1)} km
+                          {!w.changed ? " · unchanged" : ""}
+                        </td>
+                        <td>{w.removedSupport}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Includes race week, preparation and recovery. Saved plans and
+                recorded workouts are retained; unsaved weeks use a provisional
+                baseline. The effective calendar changes when you select Save
+                race & adapt calendar.
               </p>
             </div>
           )}
