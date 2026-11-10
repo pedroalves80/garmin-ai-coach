@@ -89,6 +89,8 @@ export function migrateDatabase(sqlite: Database.Database) {
   CREATE INDEX IF NOT EXISTS schedule_edit_history_created_idx ON schedule_edit_history(created_at);
   CREATE TABLE IF NOT EXISTS weekly_planning(week_start TEXT PRIMARY KEY,evidence_hash TEXT NOT NULL,review_json TEXT,attempted_at TEXT NOT NULL,error TEXT,accepted_token TEXT,accepted_plan_hash TEXT);
   CREATE TABLE IF NOT EXISTS automatic_coach(day TEXT PRIMARY KEY,context_hash TEXT NOT NULL,attempted_at TEXT NOT NULL,error TEXT);
+  CREATE TABLE IF NOT EXISTS race_pace_evidence(id TEXT PRIMARY KEY,day TEXT NOT NULL,source TEXT NOT NULL,distance_km REAL NOT NULL,seconds INTEGER NOT NULL,updated_at TEXT NOT NULL);
+  CREATE UNIQUE INDEX IF NOT EXISTS race_pace_evidence_reference_idx ON race_pace_evidence(day,source,distance_km);
   CREATE TABLE IF NOT EXISTS race_events(id TEXT PRIMARY KEY,day TEXT NOT NULL,item_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS training_pauses(id TEXT PRIMARY KEY,start TEXT NOT NULL,item_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS athlete_profile(id INTEGER PRIMARY KEY CHECK(id=1),profile_json TEXT NOT NULL);

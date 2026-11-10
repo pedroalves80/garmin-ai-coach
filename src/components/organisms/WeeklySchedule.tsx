@@ -1,4 +1,7 @@
 "use client";
+import { RacePaceCard } from "../molecules/RacePaceCard";
+import { RegisteredRaceNotice } from "../molecules/RegisteredRaceNotice";
+import type { RacePaceAdvice } from "@/shared/types/race-pacing";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TrainingPlan } from "@/shared/types/metrics";
@@ -30,6 +33,7 @@ export function WeeklySchedule({
   today,
   selectedDay,
   onSelect,
+  racePaceAdvice = [],
 }: {
   plan: TrainingPlan;
   calendar: WeekSchedule;
@@ -38,6 +42,7 @@ export function WeeklySchedule({
   today: string;
   selectedDay: number;
   onSelect: (day: number) => void;
+  racePaceAdvice?: RacePaceAdvice[];
 }) {
   const router = useRouter(),
     [week, setWeek] = useState(initialWeek),
@@ -156,29 +161,40 @@ export function WeeklySchedule({
           const secondary = d.sessions.find(
             (s) => s.session.sport !== "running",
           )?.session;
+          const racePrescribed = d.sessions.some(
+            (s) =>
+              s.status !== "blocked" &&
+              s.session.sport === "running" &&
+              s.session.workout.race?.id === d.race?.id &&
+              !!d.race,
+          );
           return (
             <button
               key={d.day}
               type="button"
               aria-pressed={selectedDay === d.dayOffset}
-              aria-label={`${names[d.dayOffset]} · ${run?.sport === "running" ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)} km run` : "no run"}${secondary ? ` + ${secondary.sport}` : ""}${d.unavailableSlots?.length ? ` · Unavailable: ${d.unavailableSlots.map((slot) => slotLabels[slot]).join(", ")}` : ""}`}
+              aria-label={`${names[d.dayOffset]} · ${d.race ? `${d.race.name} · ${d.race.distanceKm} km race${!racePrescribed ? " · Not prescribed, needs review" : ""}` : run?.sport === "running" ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)} km run` : "no run"}${secondary ? ` + ${secondary.sport}` : ""}${d.unavailableSlots?.length ? ` · Unavailable: ${d.unavailableSlots.map((slot) => slotLabels[slot]).join(", ")}` : ""}`}
               onClick={() => onSelect(d.dayOffset)}
             >
               <span>{names[d.dayOffset].slice(0, 3)}</span>
               <strong>{Number(d.day.slice(-2))}</strong>
               <small>
-                {run?.sport === "running"
-                  ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)}k`
-                  : d.dayOffset === 6
-                    ? "Rest"
-                    : "—"}
+                {d.race
+                  ? `${d.race.distanceKm}k race`
+                  : run?.sport === "running"
+                    ? `${workoutKm(run.workout, plan.easyPace).toFixed(1)}k`
+                    : d.dayOffset === 6
+                      ? "Rest"
+                      : "—"}
               </small>
               <small className="secondary-day-label">
-                {secondary?.sport === "hyrox"
-                  ? `Hyrox${secondary.attendance === "undecided" ? "?" : ""}`
-                  : secondary?.sport === "cycling"
-                    ? "Cycle"
-                    : ""}
+                {d.race && !racePrescribed
+                  ? "Needs review"
+                  : secondary?.sport === "hyrox"
+                    ? `Hyrox${secondary.attendance === "undecided" ? "?" : ""}`
+                    : secondary?.sport === "cycling"
+                      ? "Cycle"
+                      : ""}
               </small>
               {!!d.unavailableSlots?.length && (
                 <small className="unavailable-day-label">Unavailable</small>
@@ -212,6 +228,12 @@ export function WeeklySchedule({
             {day.sessions.length} / 2 sessions
           </span>
         </div>
+        <RegisteredRaceNotice day={day} />
+        {day.race && racePaceAdvice.find((a) => a.raceId === day.race!.id) && (
+          <RacePaceCard
+            advice={racePaceAdvice.find((a) => a.raceId === day.race!.id)!}
+          />
+        )}
         {!!day.unavailableSlots?.length && (
           <p className="inline-notice small-text">
             Unavailable ·{" "}
@@ -237,11 +259,13 @@ export function WeeklySchedule({
         </div>
         {!day.sessions.length && (
           <p className="muted">
-            {day.unavailableSlots?.length
-              ? "No workouts scheduled. Your availability blocks are reflected here."
-              : selectedDay === 6
-                ? "Complete rest. No running, cycling or Hyrox scheduled."
-                : "No workout scheduled. Leave room for recovery."}
+            {day.race
+              ? "Registered event retained above. No race workout is prescribed until the conflict is reviewed."
+              : day.unavailableSlots?.length
+                ? "No workouts scheduled. Your availability blocks are reflected here."
+                : selectedDay === 6
+                  ? "Complete rest. No running, cycling or Hyrox scheduled."
+                  : "No workout scheduled. Leave room for recovery."}
           </p>
         )}
         {day.warnings.map((warning, i) => (

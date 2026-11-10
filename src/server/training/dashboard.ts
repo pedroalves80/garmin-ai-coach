@@ -1,3 +1,4 @@
+import { RacePacingRepository } from "./race-pacing-repository";
 import type Database from "better-sqlite3";
 import { weeklyPlanning, healthEvidence } from "./weekly-planning";
 import { garminRecovery } from "./recovery";
@@ -160,7 +161,11 @@ export function trainingDashboardData(
   const calendarRun = todaySessions?.sessions.find(
     (s) => s.session.sport === "running",
   )?.session;
+  const { racePaceAdvice } = weeklyRecommendation;
+  const paceEvidence = new RacePacingRepository(sqlite).all();
   return {
+    paceEvidence,
+    racePaceAdvice,
     weeklyRecommendation,
     recoveryEvidence,
     today,

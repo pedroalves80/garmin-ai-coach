@@ -558,6 +558,7 @@ function TrainingWeekEditor({
           today={data.today}
           selectedDay={selectedDay}
           onSelect={setSelectedDay}
+          racePaceAdvice={data.racePaceAdvice}
         />
       )}
     </section>

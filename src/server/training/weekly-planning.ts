@@ -1,3 +1,4 @@
+import { racePacingData } from "./race-pacing";
 import {
   weeklyOutput,
   permittedWeeklyChoice,
@@ -519,7 +520,15 @@ export function weeklyPlanning(
       }),
     ratedCoverage: load.latest.coverage,
   };
+  const { paceEvidence, racePaceAdvice } = racePacingData(
+    db,
+    now,
+    activities,
+    commitments,
+    athlete.targets,
+  );
   const evidenceHash = fingerprint({
+    paceEvidence,
     today,
     plans,
     activities,
@@ -622,5 +631,6 @@ export function weeklyPlanning(
     options,
     performance,
     selectionPolicy,
+    racePaceAdvice,
   };
 }

@@ -195,3 +195,14 @@ npm run build
 2. Workout FIT export workflow.
 
 The automated tests use an in-memory database and synthetic API responses. They cover pagination, retries, malformed data, token renewal, atomic failure recovery, duplicate prevention, corrections, Lisbon week boundaries, persisted schedules, competing workers, restart cooldowns, manual-sync coordination and cancellation. A real Garmin account test requires your own key and is not part of the test suite.
+
+
+## Race visibility and road pacing
+
+Registered events stay visible in the week strip even when recovery, a return review or an approved rest decision prevents prescribing them. Selecting the date shows **Not prescribed · needs review** and the reason. A registered event never silently becomes an extra workout. For example, a December 23 event is inside the three-day recovery window following a December 20 road race; its registration stays visible while the workout remains withheld.
+
+In **Events → Road race pacing**, maintain a current Garmin prediction or confirm a completed whole-course road race/time trial. Evidence stays separate from editable event goals. Saving evidence never changes running targets, event duration or Garmin workout steps. Page reads calculate guidance locally and make no AI requests. Existing coach reviews receive sanitized pacing evidence/ranges without event names, GPS or reference identifiers; the same request caps remain.
+
+Garmin predictions are user-reported estimates, fresh for 30 days in this app; confirmed road performances remain eligible for 90 days. Cross-distance road calculations use Riegel exponent 1.07, only up to 21.1 km and within a 2× distance ratio. Garmin predictions are used only at their entered distance. These are app limits, not a guarantee of race readiness. See the [Garmin explanation](https://www.garmin.com/en-US/blog/fitness/free-race-day-features-on-your-garmin-running-smartwatch/) and [Vickers & Vertosick study](https://doi.org/10.1186/s13102-016-0052-y).
+
+A Garmin-only planning range is 5–10% slower than its estimate; a confirmed-result range is the estimate through 5% slower, rounded upward to 5 s/km. These margins are transparent heuristics, not validated uncertainty intervals or race-day forecasts. Readiness, road elevation/weather and execution remain unverified; recheck nearer the race. Training events show controlled effort, conflicting events have no execution-pace recommendation, and trails never receive a road-pace extrapolation. Regular run averages, matched HR/pace trends and event goal times cannot certify race performance or automatically accelerate a target.

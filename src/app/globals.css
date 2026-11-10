@@ -1939,3 +1939,28 @@ textarea {
   justify-self: end;
   font-size: 0.85rem;
 }
+
+.race-pace-card {
+  padding: 12px 0;
+  min-width: 0;
+}
+.commitment-item:has(.race-pace-card) {
+  flex-direction: column;
+  align-items: stretch;
+}
+.registered-race-notice {
+  border-left: 3px solid var(--orange);
+}
+.pace-evidence-form {
+  margin-top: 16px;
+}
+.pace-evidence-form label {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.pace-evidence-form input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+  min-inline-size: 0;
+  max-width: 100%;
+}

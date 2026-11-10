@@ -1,3 +1,5 @@
+import { racePacingData } from "../training/race-pacing";
+import { racePacingContext } from "../../shared/race-pacing";
 import { prepare } from "../db/statements";
 import { garminRecovery } from "../training/recovery";
 import { healthEvidence } from "../training/weekly-planning";
@@ -357,6 +359,10 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   // Explicit allowlist: never send raw activity JSON, locations, names, notes or credentials.
   const payload = {
     day,
+    roadRacePacing: racePacingContext(
+      racePacingData(sqlite, now, activities, commitments, athlete.targets)
+        .racePaceAdvice,
+    ),
     recoveryEvidence,
     subjectiveRecovery: {
       optional: true,

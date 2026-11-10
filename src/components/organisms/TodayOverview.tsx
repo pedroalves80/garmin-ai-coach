@@ -1,3 +1,4 @@
+import { RegisteredRaceNotice } from "../molecules/RegisteredRaceNotice";
 import Link from "next/link";
 import type { DashboardData } from "@/server/dashboard/data";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
@@ -111,6 +112,7 @@ export function TodayOverview({
               Your week <Icon name="arrow" />
             </Link>
           </div>
+          <RegisteredRaceNotice day={training.todaySessions} />
           {unavailable && (
             <p className="inline-notice small-text">
               Unavailable · {unavailableText}

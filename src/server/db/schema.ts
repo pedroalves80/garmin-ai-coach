@@ -1,4 +1,10 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  uniqueIndex,
+  integer,
+  real,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 
 export const syncState = sqliteTable("sync_state", {
   provider: text("provider").primaryKey(),
@@ -150,3 +156,22 @@ export const weeklyPlanning = sqliteTable("weekly_planning", {
   acceptedToken: text("accepted_token"),
   acceptedPlanHash: text("accepted_plan_hash"),
 });
+
+export const racePaceEvidence = sqliteTable(
+  "race_pace_evidence",
+  {
+    id: text("id").primaryKey(),
+    day: text("day").notNull(),
+    source: text("source").notNull(),
+    distanceKm: real("distance_km").notNull(),
+    seconds: integer("seconds").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("race_pace_evidence_reference_idx").on(
+      t.day,
+      t.source,
+      t.distanceKm,
+    ),
+  ],
+);

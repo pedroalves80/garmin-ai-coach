@@ -278,7 +278,7 @@ export function applyCommitments(
         (!p.baselineReviewedAt ||
           daysBetween(day.day, p.baselineReviewedAt) < 7),
     );
-    const recoveryConflict = races.some(
+    const recoveryConflict = races.find(
       (r) =>
         r.day < day.day &&
         daysBetween(day.day, r.day) <= raceWindow(r).recovery,
@@ -289,7 +289,9 @@ export function applyCommitments(
       day.rule = {
         phase: returnConflict ? "return" : "race_recovery",
         notes: [
-          "This event overlaps an active return or race-recovery window. It stays in the calendar but is not prescribed. Reassess participation.",
+          returnConflict
+            ? "This registered event overlaps an active return review. It remains visible but is not prescribed."
+            : `This registered event is ${daysBetween(day.day, recoveryConflict!.day)} days after the ${recoveryConflict!.day} race, within its ${raceWindow(recoveryConflict!).recovery}-day recovery window. It remains visible but is not prescribed; review participation and race priorities.`,
         ],
       };
       continue;

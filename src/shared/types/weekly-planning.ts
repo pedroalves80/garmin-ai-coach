@@ -1,3 +1,4 @@
+import type { RacePaceAdvice } from "./race-pacing";
 import type { TrainingPlan, TrainingWeek } from "./metrics";
 import type { WeekPreferences, WeekSchedule } from "./schedule";
 
@@ -38,6 +39,7 @@ export type WeeklyPlanOption = {
   calendar: WeekSchedule;
 };
 export type WeeklyPlanning = {
+  racePaceAdvice: RacePaceAdvice[];
   start: string;
   token: string;
   evidenceHash: string;
