@@ -7,6 +7,7 @@ import { Icon } from "@/components/atoms/Icon";
 const items = [
   { href: "/", label: "Today", icon: "today" },
   { href: "/plan", label: "Plan", icon: "plan" },
+  { href: "/events", label: "Events", icon: "events" },
   { href: "/coach", label: "Coach", icon: "coach" },
   { href: "/progress", label: "Progress", icon: "progress" },
   { href: "/settings", label: "Settings", icon: "settings" },

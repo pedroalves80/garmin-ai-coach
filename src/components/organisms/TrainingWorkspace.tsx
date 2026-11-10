@@ -2,13 +2,18 @@
 import { applyAvailability } from "@/shared/schedule-editing";
 import { WeekNavigator } from "../molecules/WeekNavigator";
 import { RaceWeekNotice } from "../molecules/RaceWeekNotice";
-import { weekView, weekMonday, attendanceForWeek } from "@/shared/week-view";
+import {
+  weekView,
+  weekMonday,
+  attendanceForWeek,
+  planDayFromQuery,
+} from "@/shared/week-view";
 import { WeeklyPlanReview } from "./WeeklyPlanReview";
 import type { TrainingPlan } from "@/shared/types/metrics";
-import { TrainingCalendarManager } from "./TrainingCalendarManager";
+import Link from "next/link";
 import { applyCommitments, calendarGate } from "@/shared/commitment-calendar";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import {
   createTrainingPlan,
@@ -69,8 +74,36 @@ function matchesGeneratedWeek(
   }
 }
 export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
+  const query = useSearchParams();
+  const requestedDay = planDayFromQuery(
+    query.get("date"),
+    [data.monday, ...data.plans.map((p) => p.start)].sort()[0],
+    weekMonday(offset(data.monday, 730)),
+  );
+  return (
+    <TrainingWeekEditor
+      key={requestedDay ?? "current"}
+      data={data}
+      requestedDay={requestedDay}
+    />
+  );
+}
+function TrainingWeekEditor({
+  data,
+  requestedDay,
+}: {
+  data: TrainingDashboardData;
+  requestedDay?: string;
+}) {
   const router = useRouter(),
-    initial = data.previewPlan;
+    initial = requestedDay
+      ? weekView(weekMonday(requestedDay), {
+          monday: data.monday,
+          plans: data.plans,
+          prepared: data.weeklyRecommendation.selected.plan,
+          athlete: data.athlete,
+        }).plan
+      : data.previewPlan;
   const [week, setWeek] = useState(initial?.weekNumber ?? 1),
     [start, setStart] = useState(initial?.start ?? offset(data.monday, 7)),
     [targetKm, setTargetKm] = useState(String(initial?.targetKm ?? 25));
@@ -81,7 +114,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
       formatPace(initial?.tempoPace ?? data.athlete.tempoPace),
     );
   const todayOffset = Math.round(
-    (Date.parse(`${data.today}T12:00:00Z`) -
+    (Date.parse(`${requestedDay ?? data.today}T12:00:00Z`) -
       Date.parse(`${initial?.start ?? offset(data.monday, 7)}T12:00:00Z`)) /
       86400000,
   );
@@ -222,48 +255,15 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
     0,
   );
   const gate = calendarGate(data.commitments, data.today, start);
-  function browseWeek(
-    monday: string,
-    day: number | undefined = undefined,
-    baseline = false,
-  ) {
+  function browseWeek(monday: string) {
     const next = weekView(monday, {
       monday: data.monday,
       plans: data.plans,
       prepared: prepared.plan,
       athlete: data.athlete,
     });
-    loadPreparedWeek(baseline ? { ...next.plan, targetKm: 20 } : next.plan);
-    setSelectedDay(
-      day ??
-        (monday === data.monday
-          ? Math.round(
-              (Date.parse(data.today + "T12:00:00Z") -
-                Date.parse(monday + "T12:00:00Z")) /
-                86400000,
-            )
-          : 0),
-    );
+    loadPreparedWeek(next.plan);
     setMessage("");
-  }
-  function viewDate(day: string, baseline = false) {
-    const monday = weekMonday(day);
-    browseWeek(
-      monday,
-      Math.round(
-        (Date.parse(day + "T12:00:00Z") - Date.parse(monday + "T12:00:00Z")) /
-          86400000,
-      ),
-      baseline,
-    );
-    requestAnimationFrame(() =>
-      document.getElementById("day-schedule-heading")?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "instant"
-          : "smooth",
-        block: "start",
-      }),
-    );
   }
 
   return (
@@ -295,7 +295,9 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
           }}
         />
       )}
-      <TrainingCalendarManager data={data} onView={viewDate} />
+      <Link href="/events" className="text-link plan-events-link">
+        Races & training breaks →
+      </Link>
       {preview && (
         <RaceWeekNotice
           start={start}

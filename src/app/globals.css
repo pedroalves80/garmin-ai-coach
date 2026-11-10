@@ -1113,7 +1113,7 @@ textarea {
   .app-sidebar {
     inset: auto 0 0;
     width: auto;
-    padding: 0 0 env(safe-area-inset-bottom);
+    padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px));
     border-right: none;
     border-top: 1px solid var(--line);
     background: #fff;
@@ -1124,7 +1124,7 @@ textarea {
   }
   .primary-nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0;
     margin: 0 auto;
     padding: 5px 8px;
@@ -1173,7 +1173,7 @@ textarea {
     color: var(--muted);
   }
   .page-content {
-    padding: 18px 22px calc(92px + env(safe-area-inset-bottom));
+    padding: 18px 22px calc(108px + env(safe-area-inset-bottom, 0px));
     max-width: 720px;
   }
   .page-heading {
@@ -1237,7 +1237,7 @@ textarea {
     padding: 17px 18px 13px;
   }
   .page-content {
-    padding: 17px 18px calc(92px + env(safe-area-inset-bottom));
+    padding: 17px 18px calc(108px + env(safe-area-inset-bottom, 0px));
   }
   .screen-stack {
     gap: 16px;
@@ -1919,4 +1919,9 @@ textarea {
   .week-navigator label {
     width: 100%;
   }
+}
+
+.plan-events-link {
+  justify-self: end;
+  font-size: 0.85rem;
 }

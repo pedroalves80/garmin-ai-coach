@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { raceWindow, daysBetween } from "@/shared/commitment-calendar";
 import { dayOffsetDate } from "@/shared/weekly-schedule";
 import { weekMonday } from "@/shared/week-view";
@@ -54,6 +55,9 @@ export function RaceWeekNotice({
         moved elsewhere. Review the dates and race priority in Races & training
         breaks.
       </p>
+      <Link href="/events" className="text-link">
+        Manage races & training breaks →
+      </Link>
     </aside>
   );
 }

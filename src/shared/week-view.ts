@@ -77,3 +77,18 @@ export function attendanceForWeek(
     .at(-1);
   return previous && previous >= preparedStart ? weeks[previous] : prepared;
 }
+
+// Deep links carry only a validated calendar day, never an instruction to save a plan.
+export function planDayHref(day: string) {
+  weekMonday(day);
+  return `/plan?date=${encodeURIComponent(day)}`;
+}
+export function planDayFromQuery(raw: string | null, min: string, max: string) {
+  if (!raw) return undefined;
+  try {
+    const start = weekMonday(raw);
+    return start >= min && start <= max ? raw : undefined;
+  } catch {
+    return undefined;
+  }
+}

@@ -221,14 +221,18 @@ export function TrainingCalendarManager({
       if (!response.ok) throw Error(result.error ?? "Could not save calendar.");
       setMessage(
         "action" in body && body.action === "race"
-          ? "Race saved. Preparation and recovery now apply to the weeks shown in the preview. You are still viewing the same week; use View race week to jump to the event."
+          ? "Race saved. Preparation and recovery now apply to the weeks shown in the preview. Use View race week to see its sessions in Plan."
           : "Calendar saved. The week and coach now use these commitments.",
       );
       setMode(null);
       setEditing(null);
       router.refresh();
-      if (viewDay)
-        onView(viewDay, "action" in body && body.action === "review_baseline");
+      if (
+        viewDay &&
+        "action" in body &&
+        ["review_return", "review_baseline"].includes(String(body.action))
+      )
+        onView(viewDay, body.action === "review_baseline");
     } catch (e) {
       setError(true);
       setMessage(e instanceof Error ? e.message : "Could not save calendar.");

@@ -4,6 +4,8 @@ import {
   weekView,
   weekMonday,
   attendanceForWeek,
+  planDayHref,
+  planDayFromQuery,
 } from "../src/shared/week-view";
 import { raceImpactWeeks, compareRaceImpact } from "../src/shared/race-impact";
 import { createTrainingPlan, workoutKm } from "../src/shared/training-plan";
@@ -163,4 +165,25 @@ test("race impact explains current-week reductions while preserving baseline pla
   });
   assert.equal(distant.changed, false);
   assert.equal(distant.afterKm, 26.3);
+});
+
+test("event links select the race day in its saved week without activating or changing plans", () => {
+  const before = JSON.stringify(context);
+  const day = planDayFromQuery("2026-11-22", "2026-11-02", "2028-11-06");
+  assert.equal(planDayHref("2026-11-22"), "/plan?date=2026-11-22");
+  assert.equal(day, "2026-11-22");
+  assert.equal(weekView(weekMonday(day!), context).plan, future);
+  assert.equal(JSON.stringify(context), before);
+});
+test("invalid or out-of-range plan date links fall back to the current week", () => {
+  for (const raw of [
+    null,
+    "",
+    "2026-02-31",
+    "https://example.com",
+    "2020-01-01",
+    "2030-01-01",
+  ])
+    assert.equal(planDayFromQuery(raw, "2026-11-02", "2028-11-06"), undefined);
+  assert.throws(() => planDayHref("not-a-date"));
 });

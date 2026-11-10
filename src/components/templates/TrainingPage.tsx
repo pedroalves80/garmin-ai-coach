@@ -5,6 +5,7 @@ import { dashboardData } from "@/server/dashboard/data";
 import { trainingDashboardData } from "@/server/training/dashboard";
 import { getConfig } from "@/server/config";
 import { TodayOverview } from "@/components/organisms/TodayOverview";
+import { EventsWorkspace } from "@/components/organisms/EventsWorkspace";
 import { TrainingWorkspace } from "@/components/organisms/TrainingWorkspace";
 import { ProgressWorkspace } from "@/components/organisms/ProgressWorkspace";
 import { CoachPanel } from "@/components/organisms/CoachPanel";
@@ -16,7 +17,7 @@ import { ScheduleRepository } from "@/server/training/schedule-repository";
 import { getDatabase } from "@/server/db/client";
 import { GarminConnectionPanel } from "@/components/organisms/GarminConnectionPanel";
 
-type View = "today" | "plan" | "coach" | "progress" | "settings";
+type View = "today" | "plan" | "events" | "coach" | "progress" | "settings";
 const pages = {
   today: {
     eyebrow: "YOUR DAILY OVERVIEW",
@@ -27,6 +28,12 @@ const pages = {
     eyebrow: "MAKE A LITTLE ROOM FOR PROGRESS",
     title: "Your training week.",
     description: "Pick a day. See the steps. Make it yours in Garmin.",
+  },
+  events: {
+    eyebrow: "YOUR TRAINING CALENDAR",
+    title: "Make room for life.",
+    description:
+      "Schedule races and training breaks, and review how they shape your weeks.",
   },
   coach: {
     eyebrow: "A SECOND PAIR OF EYES",
@@ -85,6 +92,7 @@ async function Content({ view }: { view: View }) {
     );
   }
   const training = trainingDashboardData();
+  if (view === "events") return <EventsWorkspace data={training} />;
   if (view === "plan") return <TrainingWorkspace data={training} />;
   const data = dashboardData();
   return view === "progress" ? (

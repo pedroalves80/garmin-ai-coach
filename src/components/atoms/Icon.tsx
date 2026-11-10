@@ -1,6 +1,7 @@
 type IconName =
   | "today"
   | "plan"
+  | "events"
   | "coach"
   | "progress"
   | "settings"
@@ -14,6 +15,7 @@ const paths: Record<IconName, string[]> = {
     "M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z",
     "M8 14h2m4 0h2m-8 3h2",
   ],
+  events: ["M5 21V3", "M5 4h14l-3 4 3 4H5"],
   coach: ["m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z"],
   progress: ["M4 4v16h17", "m7 14 4-5 4 3 5-7"],
   settings: [
