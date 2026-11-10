@@ -1113,7 +1113,7 @@ textarea {
   .app-sidebar {
     inset: auto 0 0;
     width: auto;
-    padding: 0 0 max(4px, env(safe-area-inset-bottom, 0px));
+    padding: 0 0 max(8px, env(safe-area-inset-bottom, 0px));
     border-right: none;
     border-top: 1px solid var(--line);
     background: #fff;
@@ -1173,7 +1173,7 @@ textarea {
     color: var(--muted);
   }
   .page-content {
-    padding: 18px 22px calc(92px + max(4px, env(safe-area-inset-bottom, 0px)));
+    padding: 18px 22px calc(92px + max(8px, env(safe-area-inset-bottom, 0px)));
     max-width: 720px;
   }
   .page-heading {
@@ -1237,7 +1237,7 @@ textarea {
     padding: 17px 18px 13px;
   }
   .page-content {
-    padding: 17px 18px calc(92px + max(4px, env(safe-area-inset-bottom, 0px)));
+    padding: 17px 18px calc(92px + max(8px, env(safe-area-inset-bottom, 0px)));
   }
   .screen-stack {
     gap: 16px;
