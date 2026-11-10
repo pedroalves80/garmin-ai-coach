@@ -2,7 +2,7 @@
 name: garmin-ai-coach
 services:
   coach:
-    image: ${GARMIN_COACH_WEB_IMAGE:-${GARMIN_COACH_IMAGE:-garmin-ai-coach:d111768-arm64}}
+    image: ${GARMIN_COACH_WEB_IMAGE:-${GARMIN_COACH_IMAGE:-garmin-ai-coach:a26e7e0-arm64}}
     container_name: garmin-ai-coach
     env_file:
       - path: ./configs/garmin-ai-coach/coach.env
