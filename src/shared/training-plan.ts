@@ -1,3 +1,4 @@
+import { TRAIL_GUIDANCE, trailSummary } from "./trail-running";
 import { DEFAULT_TARGETS, type PlanDevelopment } from "./types/athlete";
 import type {
   PlanStep,
@@ -62,7 +63,7 @@ export function formatWorkoutDistance(workout: RunWorkout, easyPace: number) {
 
 export function targetText(target: PlanTarget) {
   if (target.kind === "effort")
-    return `Garmin target: none · Instructions: RPE ${target.min}–${target.max} (race effort)`;
+    return `Garmin target: none · Instructions: RPE ${target.min}–${target.max}/10`;
   return target.kind === "hr"
     ? `HR ${target.min}–${target.max} bpm`
     : `Pace ${formatPace(target.min)}–${formatPace(target.max)}/km`;
@@ -363,5 +364,9 @@ export function garminWorkoutText(workout: RunWorkout) {
             `${indent}${step.name} — ${amountText(step)} — ${targetText(step.target)}`,
           ],
     );
-  return [workout.title, ...lines(workout.steps)].join("\n");
+  return [
+    workout.title,
+    ...lines(workout.steps),
+    ...(workout.trail ? [trailSummary(workout), TRAIL_GUIDANCE] : []),
+  ].join("\n");
 }

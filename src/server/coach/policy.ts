@@ -44,21 +44,40 @@ export function workoutProposal(
     );
     after = {
       dayOffset: before.dayOffset,
-      title:
-        action === "shorten"
+      title: before.trail
+        ? "Reduced trail recovery run"
+        : action === "shorten"
           ? "Reduced recovery run"
           : "Replace quality with base run",
       type: "recovery",
+      ...(before.trail
+        ? {
+            trail: {
+              expectedMinutes: Math.max(
+                15,
+                Math.round(
+                  (before.trail.expectedMinutes * meters) /
+                    (workoutKm(before, context.plan.easyPace) * 1000),
+                ),
+              ),
+              ...(before.trail.ascentM !== undefined
+                ? { ascentM: before.trail.ascentM }
+                : {}),
+            },
+          }
+        : {}),
       steps: [
         {
           kind: "step",
           name: "Run",
           amount: { kind: "distance", meters },
-          target: {
-            kind: "hr",
-            min: context.athlete.targets.recoveryMin,
-            max: context.athlete.targets.recoveryMax,
-          },
+          target: before.trail
+            ? { kind: "effort", min: 2, max: 3 }
+            : {
+                kind: "hr",
+                min: context.athlete.targets.recoveryMin,
+                max: context.athlete.targets.recoveryMax,
+              },
         },
       ],
     };

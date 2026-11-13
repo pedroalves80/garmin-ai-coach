@@ -51,6 +51,11 @@ export type RunWorkout = {
   title: string;
   type: "base" | "strides" | "quality" | "long" | "recovery" | "race";
   race?: import("./commitments").RaceEvent;
+  trail?: {
+    expectedMinutes: number;
+    ascentM?: number;
+    road?: { title: string; steps: PlanStep[] };
+  };
   steps: PlanStep[];
 };
 

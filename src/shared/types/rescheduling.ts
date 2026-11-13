@@ -24,6 +24,15 @@ export type ScheduleEdit =
       withSessionId: string;
       reason: ChangeReason;
     }
+  | {
+      action: "terrain";
+      day: string;
+      sessionId: string;
+      terrain: "road" | "trail";
+      expectedMinutes?: number;
+      ascentM?: number;
+      reason: ChangeReason;
+    }
   | { action: "skip"; day: string; sessionId: string; reason: ChangeReason }
   | {
       action: "availability";

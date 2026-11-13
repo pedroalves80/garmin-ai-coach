@@ -7,6 +7,7 @@ import {
   cyclingMinutes,
   cyclingWorkoutText,
 } from "@/shared/weekly-schedule";
+import { TrailGuidance } from "./TrailGuidance";
 import { PlanSteps } from "./PlanSteps";
 import { CopyWorkoutButton } from "./CopyWorkoutButton";
 import { StatusBadge } from "../atoms/StatusBadge";
@@ -86,6 +87,15 @@ export function SessionCard({
               calendar does not certify race readiness.
             </p>
           )}
+          {session.workout.type === "long" &&
+            !session.workout.race &&
+            status === "planned" && (
+              <p className="muted small-text">
+                Choose Road / trail long run under Change workout to change
+                surface or route estimates while keeping the kilometres.
+              </p>
+            )}
+          <TrailGuidance workout={session.workout} />
           <PlanSteps steps={session.workout.steps} />
           <CopyWorkoutButton workout={session.workout} />
         </>

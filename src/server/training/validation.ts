@@ -100,6 +100,18 @@ export const savedPlanSchema: z.ZodType<TrainingPlan> =
             "race",
           ]),
           race: raceSchema.optional(),
+          trail: z
+            .object({
+              expectedMinutes: z.number().int().min(15).max(1440),
+              ascentM: z.number().int().min(0).max(10000).optional(),
+              road: z
+                .object({
+                  title: z.string(),
+                  steps: z.array(stepSchema).min(1),
+                })
+                .optional(),
+            })
+            .optional(),
           steps: z.array(stepSchema).min(1),
         }),
       )

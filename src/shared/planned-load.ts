@@ -13,12 +13,16 @@ export function plannedEffort(session: TrainingSession) {
         ? session.workout.race?.priority === "goal"
           ? 8
           : 6
-        : session.workout.type === "quality"
-          ? 6
-          : session.workout.type === "long" ||
-              session.workout.type === "strides"
+        : session.workout.trail
+          ? session.workout.type === "recovery"
             ? 3
-            : 2;
+            : 4
+          : session.workout.type === "quality"
+            ? 6
+            : session.workout.type === "long" ||
+                session.workout.type === "strides"
+              ? 3
+              : 2;
 }
 export function plannedMinutes(session: TrainingSession, plan: TrainingPlan) {
   return session.sport === "hyrox"
@@ -27,10 +31,11 @@ export function plannedMinutes(session: TrainingSession, plan: TrainingPlan) {
       ? cyclingMinutes(session.workout)
       : session.workout.race
         ? session.workout.race.expectedMinutes + (1.5 * plan.easyPace) / 60
-        : session.workout.steps.reduce(
+        : (session.workout.trail?.expectedMinutes ??
+          session.workout.steps.reduce(
             (n, s) => n + stepSeconds(s, plan.easyPace),
             0,
-          ) / 60;
+          ) / 60);
 }
 export function reviewPlannedWeek(
   calendar: WeekSchedule,
@@ -71,6 +76,16 @@ export function reviewPlannedWeek(
   }));
   const warnings: string[] = [];
   const suggestedSkips: number[] = [];
+  for (const day of calendar.days) {
+    if (
+      day.sessions.some(
+        ({ session }) => session.sport === "running" && session.workout.trail,
+      )
+    )
+      warnings.push(
+        `${day.day}: trail kilometres retain the distance plan but add terrain demands. Estimated load uses your outing duration and a planning RPE (4 for long runs, 3 for recovery); this is not measured load. Review ascent, descents and supporting cycling before increasing distance or difficulty.`,
+      );
+  }
   for (const day of days) {
     const next = days[day.dayOffset + 1];
     if (day.hardSecondary && next?.keyRun) {

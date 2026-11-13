@@ -17,6 +17,19 @@ function stepsIdentity(steps: PlanStep[]): unknown[] {
 }
 export function sameWorkout(a: RunWorkout, b: RunWorkout) {
   const identity = (w: RunWorkout) =>
-    JSON.stringify([w.dayOffset, w.title, w.type, stepsIdentity(w.steps)]);
+    JSON.stringify([
+      w.dayOffset,
+      w.title,
+      w.type,
+      stepsIdentity(w.steps),
+      w.trail
+        ? [
+            w.trail.expectedMinutes,
+            w.trail.ascentM ?? null,
+            w.trail.road?.title,
+            w.trail.road ? stepsIdentity(w.trail.road.steps) : null,
+          ]
+        : null,
+    ]);
   return identity(a) === identity(b);
 }

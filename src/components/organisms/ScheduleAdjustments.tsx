@@ -155,7 +155,12 @@ function AdjustmentEditor({
     "workout",
   );
   const [sessionId, setSessionId] = useState("");
-  const [action, setAction] = useState<"move" | "swap" | "skip">("move");
+  const [action, setAction] = useState<"move" | "swap" | "skip" | "terrain">(
+    "move",
+  );
+  const [terrain, setTerrain] = useState<"road" | "trail">("trail");
+  const [trailMinutes, setTrailMinutes] = useState("");
+  const [ascent, setAscent] = useState("");
   const [toDay, setToDay] = useState(day);
   const [toSlot, setToSlot] = useState<TrainingSlot>("morning");
   const [withSessionId, setWithSessionId] = useState("");
@@ -345,25 +350,52 @@ function AdjustmentEditor({
     (entry) => entry.session.id === withSessionId,
   );
   const busy = pending !== null;
+  const canChangeTerrain =
+    !movementIssue &&
+    selected?.session.sport === "running" &&
+    selected.session.workout.type === "long";
   const validWorkout =
     !!selected &&
-    (action === "skip" ||
-      (!movementIssue &&
-        !!targetDay &&
-        !destinationRestriction(targetDay) &&
-        (action === "swap"
-          ? !!swapEntry && !movementRestriction(swapEntry, targetDay)
-          : !slotRestriction(toSlot))));
+    (action === "terrain"
+      ? canChangeTerrain &&
+        (terrain === "road"
+          ? !!(
+              selected?.session.sport === "running" &&
+              selected.session.workout.trail?.road
+            )
+          : Number(trailMinutes) >= 15 &&
+            Number(trailMinutes) <= 1440 &&
+            (ascent === "" || (Number(ascent) >= 0 && Number(ascent) <= 10000)))
+      : action === "skip" ||
+        (!movementIssue &&
+          !!targetDay &&
+          !destinationRestriction(targetDay) &&
+          (action === "swap"
+            ? !!swapEntry && !movementRestriction(swapEntry, targetDay)
+            : !slotRestriction(toSlot))));
 
   function previewWorkout() {
     if (!validWorkout) return;
     const base = { day, sessionId, reason };
     const change: ScheduleEdit =
-      action === "move"
-        ? { ...base, action, toDay, toSlot }
-        : action === "swap"
-          ? { ...base, action, withDay: toDay, withSessionId }
-          : { ...base, action };
+      action === "terrain"
+        ? {
+            ...base,
+            action,
+            terrain,
+            reason: "other",
+            ...(terrain === "trail"
+              ? {
+                  expectedMinutes: Number(trailMinutes),
+                  ...(ascent !== "" ? { ascentM: Number(ascent) } : {}),
+                }
+              : {}),
+          }
+        : action === "move"
+          ? { ...base, action, toDay, toSlot }
+          : action === "swap"
+            ? { ...base, action, withDay: toDay, withSessionId }
+            : { ...base, action };
     void getPreview(change);
   }
 
@@ -516,11 +548,69 @@ function AdjustmentEditor({
                             ? " · unavailable for this workout"
                             : ""}
                         </option>
+                        <option value="terrain" disabled={!canChangeTerrain}>
+                          Road / trail long run
+                        </option>
                         <option value="skip">Skip workout</option>
                       </select>
                     </label>
-                    {reasonField}
-                    {action !== "skip" && (
+                    {action !== "terrain" && reasonField}
+                    {action === "terrain" && (
+                      <>
+                        <label htmlFor={`${id}-terrain`}>
+                          Surface
+                          <select
+                            id={`${id}-terrain`}
+                            value={terrain}
+                            onChange={(e) => {
+                              clearPreview();
+                              setTerrain(e.target.value as "road" | "trail");
+                            }}
+                          >
+                            <option value="trail">Trail · RPE 3–4/10</option>
+                            <option value="road">
+                              Road · restore original targets
+                            </option>
+                          </select>
+                        </label>
+                        {terrain === "trail" && (
+                          <>
+                            <label htmlFor={`${id}-trail-minutes`}>
+                              Estimated total minutes, including hiking
+                              <input
+                                id={`${id}-trail-minutes`}
+                                type="number"
+                                min="15"
+                                max="1440"
+                                step="1"
+                                required
+                                value={trailMinutes}
+                                onChange={(e) => {
+                                  clearPreview();
+                                  setTrailMinutes(e.target.value);
+                                }}
+                              />
+                            </label>
+                            <label htmlFor={`${id}-ascent`}>
+                              Estimated ascent (metres, optional)
+                              <input
+                                id={`${id}-ascent`}
+                                type="number"
+                                min="0"
+                                max="10000"
+                                step="1"
+                                value={ascent}
+                                onChange={(e) => {
+                                  clearPreview();
+                                  setAscent(e.target.value);
+                                }}
+                              />
+                            </label>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {action !== "skip" && action !== "terrain" && (
                       <label htmlFor={`${id}-destination`}>
                         Destination day
                         <select
@@ -605,6 +695,17 @@ function AdjustmentEditor({
                       </label>
                     )}
                   </div>
+                  {action === "terrain" && (
+                    <p className="inline-notice small-text">
+                      Same kilometres and distance steps. Trail uses RPE 3–4/10
+                      and Garmin “No Target”; HR is feedback, not a narrow
+                      alert. Hike steep climbs and control descents. Time and
+                      ascent inform load review; they are estimates, not workout
+                      targets. Choose familiar terrain first and build
+                      difficulty separately from kilometres. This changes this
+                      workout only; choose trail again for another week.
+                    </p>
+                  )}
                   {movementIssue && (
                     <p className="muted small-text">
                       {movementIssue}. You can still preview skipping this

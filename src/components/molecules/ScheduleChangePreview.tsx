@@ -13,6 +13,7 @@ import {
   targetText,
 } from "@/shared/training-plan";
 import { cyclingMinutes, powerRange } from "@/shared/weekly-schedule";
+import { TrailGuidance } from "./TrailGuidance";
 import { Button } from "../atoms/Button";
 import { dateLabel, sessionLabel, slotLabels } from "./schedule-change-labels";
 
@@ -56,6 +57,9 @@ function SessionSummary({
                           .join("; ")}`
                       : `${session.minutes} min · ${session.attendance}`}
                 </span>
+                {session.sport === "running" && (
+                  <TrailGuidance workout={session.workout} />
+                )}
                 {entry.status !== "planned" && (
                   <span>
                     {entry.status === "recorded" ? "Recorded" : "Blocked"}

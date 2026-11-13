@@ -1,3 +1,4 @@
+import { longRunTerrain } from "../src/shared/trail-running";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -392,4 +393,38 @@ test("approved review fingerprints stay current until new recovery data arrives"
     changed.contextHash,
   );
   db.close();
+});
+
+test("trail recovery reductions preserve terrain, lower effort and cannot restore the original longer road run", () => {
+  const { db } = fixture();
+  try {
+    const context = coachContext(db, now);
+    assert.ok(context.workout);
+    const trail = longRunTerrain(
+      { ...context.workout, type: "long" },
+      "trail",
+      110,
+      350,
+    );
+    const proposal = workoutProposal(
+      { ...context, workout: trail },
+      "today",
+      "shorten",
+    )!;
+    assert.ok(proposal.after?.trail);
+    assert.ok(workoutKm(proposal.after, 375) <= workoutKm(trail, 375));
+    assert.equal(proposal.after.trail.road, undefined);
+    assert.equal(proposal.after.trail.ascentM, 350);
+    assert.ok(proposal.after.trail.expectedMinutes <= 110);
+    assert.deepEqual(
+      proposal.after.steps[0].kind === "step" && proposal.after.steps[0].target,
+      { kind: "effort", min: 2, max: 3 },
+    );
+    assert.throws(
+      () => longRunTerrain(proposal.after!, "road"),
+      /ordinary long run/,
+    );
+  } finally {
+    db.close();
+  }
 });

@@ -1,3 +1,4 @@
+import { longRunTerrain } from "../../shared/trail-running";
 import { prepare } from "../db/statements";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -60,6 +61,15 @@ export const scheduleEditSchema = z.discriminatedUnion("action", [
       ...source,
       withDay: z.iso.date(),
       withSessionId: sessionId,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("terrain"),
+      ...source,
+      terrain: z.enum(["road", "trail"]),
+      expectedMinutes: z.number().int().min(15).max(1440).optional(),
+      ascentM: z.number().int().min(0).max(10000).optional(),
     })
     .strict(),
   z.object({ action: z.literal("skip"), ...source }).strict(),
@@ -371,7 +381,57 @@ export class ScheduleEditingService {
         throw new ScheduleEditError(
           "This session is controlled by a calendar rule. Review that commitment instead.",
         );
-      if (request.action === "skip") {
+      if (request.action === "terrain") {
+        if (
+          source.rule ||
+          source.race ||
+          source.dayOffset === 6 ||
+          entry.session.sport !== "running" ||
+          entry.session.workout.type !== "long"
+        )
+          throw new ScheduleEditError(
+            "Choose an uncompleted long run outside race, recovery or break rules.",
+          );
+        const checks = this.training.checkIns();
+        if (
+          checks.some(
+            (c) =>
+              c.day >= shiftDay(today, -2) &&
+              c.day <= today &&
+              (c.pain > 0 || c.fatigue >= 4 || c.soreness >= 4),
+          )
+        )
+          throw new ScheduleEditError(
+            "Recent recovery concerns need review before changing terrain.",
+          );
+        let workout;
+        try {
+          workout = longRunTerrain(
+            entry.session.workout,
+            request.terrain,
+            request.expectedMinutes,
+            request.ascentM,
+          );
+        } catch (error) {
+          throw new ScheduleEditError(
+            error instanceof Error ? error.message : "Invalid terrain change.",
+          );
+        }
+        if (hash(workout) === hash(entry.session.workout))
+          throw new ScheduleEditError(
+            "This terrain and route estimate are already selected.",
+          );
+        affected = [source.day];
+        changes.push({
+          day: source.day,
+          sessions: canonicalSource.sessions.map((s) =>
+            sessionIdentity(s.session, source.day) === id
+              ? ({ ...entry.session, workout } as TrainingSession)
+              : s.session,
+          ),
+        });
+        summary = `${source.day}: ${request.terrain === "trail" ? "trail long run (RPE 3–4/10)" : "restore road long run"} · same kilometres`;
+      } else if (request.action === "skip") {
         affected = [source.day];
         changes.push({
           day: source.day,

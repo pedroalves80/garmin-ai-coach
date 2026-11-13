@@ -393,7 +393,22 @@ export function coachContext(sqlite: Database.Database, now: Date) {
                       },
                     },
                   }
-                : s,
+                : s.session.sport === "running" && s.session.workout.trail
+                  ? {
+                      ...s,
+                      session: {
+                        ...s.session,
+                        workout: {
+                          ...s.session.workout,
+                          trail: {
+                            expectedMinutes:
+                              s.session.workout.trail.expectedMinutes,
+                            ascentM: s.session.workout.trail.ascentM ?? null,
+                          },
+                        },
+                      },
+                    }
+                  : s,
             ),
           })),
         }

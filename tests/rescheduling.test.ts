@@ -1,3 +1,5 @@
+import { plannedMinutes, plannedEffort } from "../src/shared/planned-load";
+import { garminWorkoutText } from "../src/shared/training-plan";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -248,6 +250,10 @@ test("a recorded run on the destination prevents moving another run there", (t) 
   const request = move(f);
   const { id } = apply(f, request);
   record(f, "running", FRIDAY);
+  f.service = new ScheduleEditingService(
+    f.db,
+    new Date("2026-11-06T14:00:00Z"),
+  );
   // Advance to Friday so this is a recorded activity rather than future data.
   const friday = new ScheduleEditingService(
     f.db,
@@ -856,12 +862,12 @@ test("replacing either reviewed week is blocked until a cross-week move is undon
   for (const plan of plans) {
     rejectWithoutMutation(
       f,
-      () => f.training.savePlan(plan),
+      () => f.training.savePlan(plan, NOW),
       /undo|moved|another.*week|either.*week/i,
     );
   }
   apply(f, { action: "undo", id });
-  for (const plan of plans) f.training.savePlan(plan);
+  for (const plan of plans) f.training.savePlan(plan, NOW);
   assert.deepEqual(f.training.plans(), plans);
 });
 
@@ -903,4 +909,140 @@ test("catalog GET supports HTTP LAN browsers without Fetch Metadata and rejects 
     );
     assert.equal(noHeader.status, 401);
   }
+});
+
+test("trail long run preview preserves all kilometres, supports road restore and guarded undo", (t) => {
+  const f = fixture(t);
+  const before = run(f.service.catalog(WEEK), SATURDAY);
+  const change: ScheduleEdit = {
+    action: "terrain",
+    day: SATURDAY,
+    sessionId: before.id!,
+    terrain: "trail",
+    expectedMinutes: 140,
+    ascentM: 450,
+    reason: "other",
+  };
+  const dbBefore = f.db.serialize();
+  const preview = f.service.preview(change);
+  assert.deepEqual(f.db.serialize(), dbBefore);
+  assert.equal(preview.weeks[0].beforeKm, preview.weeks[0].afterKm);
+  assert(preview.warnings.some((w) => w.includes("trail kilometres")));
+  const result = f.service.apply(change, preview.revision);
+  const trail = run(f.service.catalog(WEEK), SATURDAY);
+  assert.equal(
+    workoutKm(trail.workout, f.plan.easyPace),
+    workoutKm(before.workout, f.plan.easyPace),
+  );
+  assert.equal(trail.workout.trail!.expectedMinutes, 140);
+  assert.equal(trail.workout.trail!.ascentM, 450);
+  assert.deepEqual(trail.workout.trail!.road!.steps, before.workout.steps);
+  assert.equal(trail.id, before.id);
+  assert.equal(day(f.service.catalog(WEEK), SATURDAY).sessions.length, 2);
+  const text = garminWorkoutText(trail.workout);
+  assert.match(text, /RPE 3–4\/10/);
+  assert.doesNotMatch(text, /HR \d|Pace \d/);
+  assert.equal(plannedMinutes(trail, f.plan), 140);
+  assert.equal(plannedEffort(trail), 4);
+  apply(f, {
+    ...change,
+    terrain: "road",
+    expectedMinutes: undefined,
+    ascentM: undefined,
+  });
+  assert.deepEqual(run(f.service.catalog(WEEK), SATURDAY), before);
+  // A later change makes the first history entry unsafe to undo.
+  assert.throws(
+    () => f.service.preview({ action: "undo", id: result.id }),
+    /Cannot undo/,
+  );
+});
+
+test("trail edits undo cleanly, survive moves, and honour lunch duration and protected sessions", (t) => {
+  const f = fixture(t);
+  const before = run(f.service.catalog(WEEK), SATURDAY);
+  const change: ScheduleEdit = {
+    action: "terrain",
+    day: SATURDAY,
+    sessionId: before.id!,
+    terrain: "trail",
+    expectedMinutes: 150,
+    reason: "other",
+  };
+  const first = apply(f, change);
+  apply(f, { action: "undo", id: first.id });
+  assert.deepEqual(run(f.service.catalog(WEEK), SATURDAY), before);
+  apply(f, change);
+  rejectWithoutMutation(
+    f,
+    () =>
+      f.service.preview({
+        action: "move",
+        day: SATURDAY,
+        sessionId: before.id!,
+        toDay: FRIDAY,
+        toSlot: "lunch",
+        reason: "other",
+      }),
+    /two hours/,
+  );
+  apply(f, {
+    action: "move",
+    day: SATURDAY,
+    sessionId: before.id!,
+    toDay: FRIDAY,
+    toSlot: "morning",
+    reason: "other",
+  });
+  assert.equal(
+    run(f.service.catalog(WEEK), FRIDAY).workout.trail!.expectedMinutes,
+    150,
+  );
+  rejectWithoutMutation(
+    f,
+    () =>
+      f.service.preview({
+        ...change,
+        day: THURSDAY,
+        sessionId: run(f.service.catalog(WEEK), THURSDAY).id!,
+      }),
+    /long run/,
+  );
+  record(f, "running", FRIDAY);
+  f.service = new ScheduleEditingService(
+    f.db,
+    new Date("2026-11-06T14:00:00Z"),
+  );
+  rejectWithoutMutation(
+    f,
+    () => f.service.preview({ ...change, day: FRIDAY }),
+    /uncompleted/,
+  );
+});
+
+test("trail inputs and stale previews cannot mutate a plan", (t) => {
+  const f = fixture(t),
+    id = run(f.service.catalog(WEEK), SATURDAY).id!;
+  const change: ScheduleEdit = {
+    action: "terrain",
+    day: SATURDAY,
+    sessionId: id,
+    terrain: "trail",
+    expectedMinutes: 100,
+    reason: "other",
+  };
+  for (const patch of [
+    { expectedMinutes: undefined },
+    { expectedMinutes: 0 },
+    { ascentM: -1 },
+    { expectedMinutes: 40.5 },
+  ])
+    rejectWithoutMutation(f, () => f.service.preview({ ...change, ...patch }));
+  const preview = f.service.preview(change);
+  record(f, "cycling");
+  rejectWithoutMutation(
+    f,
+    () => f.service.apply(change, preview.revision),
+    /changed|stale|preview/i,
+  );
 });

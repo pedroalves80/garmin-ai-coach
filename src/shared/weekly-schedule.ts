@@ -102,7 +102,12 @@ export function validateRunningSchedule(plan: TrainingPlan) {
       );
     if (
       run.dayOffset < 5 &&
-      run.steps.reduce((sum, s) => sum + stepSeconds(s, plan.easyPace), 0) >
+      (run.trail
+        ? run.trail.expectedMinutes * 60
+        : run.steps.reduce(
+            (sum, s) => sum + stepSeconds(s, plan.easyPace),
+            0,
+          )) >
         WEEKDAY_LUNCH_MINUTES * 60
     )
       throw new ScheduleRuleError(
@@ -173,10 +178,11 @@ export function validateDaySessions(
       );
     const minutes =
       session.sport === "running"
-        ? session.workout.steps.reduce(
+        ? (session.workout.trail?.expectedMinutes ??
+          session.workout.steps.reduce(
             (sum, s) => sum + stepSeconds(s, easyPace),
             0,
-          ) / 60
+          ) / 60)
         : session.sport === "cycling"
           ? cyclingMinutes(session.workout)
           : session.minutes;
