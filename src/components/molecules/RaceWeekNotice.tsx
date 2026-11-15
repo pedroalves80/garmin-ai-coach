@@ -60,12 +60,14 @@ export function RaceWeekNotice({
         );
       })}
       <p className="muted small-text">
-        The baseline plan and recorded activities are retained. The calendar
-        reduces intensity and nearby supporting sessions first. Recovery runs
-        retain their distances after initial rest unless recovery evidence calls
-        for less; there is no blanket 5 km post-race cap. Removed distance is
-        not automatically made up. Review the dates and race priority in Races &
-        training breaks.
+        Race-course kilometres count towards the mileage target; race
+        warm-up/cool-down stay in total running and physical load. Hyrox never
+        contributes running mileage. The baseline plan and recorded activities
+        are retained. The calendar reduces intensity and nearby supporting
+        sessions first. Recovery runs retain their distances after initial rest
+        unless recovery evidence calls for less; there is no blanket 5 km
+        post-race cap. Removed distance is not automatically made up. Review the
+        dates and race priority in Races & training breaks.
       </p>
       <Link href="/events" className="text-link">
         Manage races & training breaks →

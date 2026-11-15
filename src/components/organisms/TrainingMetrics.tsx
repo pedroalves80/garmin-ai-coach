@@ -6,6 +6,10 @@ import { formatPace, isDistanceWorkout } from "@/shared/training-plan";
 export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
   const current = data.weeks.at(-1)!;
   const comparison = data.comparison;
+  const proposal = data.weeklyRecommendation.needsApproval
+    ? data.weeklyRecommendation
+    : data.nextWeeklyRecommendation;
+  const reviewTarget = proposal.selected.plan.targetKm;
   return (
     <section
       id="progress"
@@ -41,7 +45,7 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
           detail={
             data.plannedKm === null
               ? "Review a week in Plan"
-              : "Sum of all workout steps"
+              : "Counted mileage; race extras are separate"
           }
         />
       </div>
@@ -68,6 +72,14 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
               />
             </div>
           ))}
+          <p className="muted small-text">
+            Mileage excludes Hyrox and identified race warm-up/cool-down. All
+            physical running minutes remain in load calculations.{" "}
+            {data.weeks.at(-1)?.totalRunningKm?.toFixed(1) ?? "—"} km total
+            running this week, including{" "}
+            {data.weeks.at(-1)?.raceExtraKm?.toFixed(1) ?? "0"} km excluded race
+            extras.
+          </p>
           <p className="muted small-text">
             Current-week totals are not compared with a full week. Zero means no
             runs recorded in synced data.
@@ -178,7 +190,9 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
         aria-labelledby="progression-heading"
       >
         <div className="section-heading">
-          <h3 id="progression-heading">Volume review</h3>
+          <h3 id="progression-heading">
+            Stage {proposal.selected.plan.weekNumber} · {proposal.start}
+          </h3>
           <StatusBadge
             tone={
               data.progression.decision === "reduce"
@@ -188,16 +202,20 @@ export function TrainingMetrics({ data }: { data: TrainingDashboardData }) {
                   : "info"
             }
           >
-            {data.progression.decision.toUpperCase()}
+            {proposal.blockedReason
+              ? "REVIEW"
+              : proposal.needsApproval
+                ? "READY TO REVIEW"
+                : "ACTIVE"}
           </StatusBadge>
         </div>
-        {data.progression.reasons.map((reason) => (
+        {proposal.reasons.slice(0, 4).map((reason) => (
           <p key={reason}>{reason}</p>
         ))}
         {data.progression.suggestedKm !== null && (
           <p className="muted">
-            Review reference: ≈{data.progression.suggestedKm.toFixed(1)} km. No
-            plan changes are applied automatically.
+            Prepared mileage: {reviewTarget.toFixed(1)} km. No plan changes are
+            applied automatically.
           </p>
         )}
         <p className="muted small-text">

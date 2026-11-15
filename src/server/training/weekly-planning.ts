@@ -1,3 +1,6 @@
+import { fitMileageWeek } from "../../shared/fit-mileage-week";
+import { calendarMileage, countedActivityKm } from "../../shared/mileage";
+import { milestoneForWeek, distributeMileage } from "../../shared/milestones";
 import { raceRecoveryEvidence } from "./race-recovery";
 import { racePacingData } from "./race-pacing";
 import {
@@ -42,7 +45,6 @@ import { developmentReadiness } from "./development";
 import { calendarDate, mondayOf, shiftDay } from "./dates";
 import { weeklyMetrics, comparableRuns, sportGroup } from "./metrics";
 import { combinedLoadReview, measuredLoad } from "./load";
-import { assessProgression } from "./progression";
 import { garminRecovery, type HealthEvidenceRow } from "./recovery";
 import { returnReady } from "./commitments";
 
@@ -84,14 +86,20 @@ export function weeklyReviewRow(db: Database.Database, start: string) {
 export function weeklyPlanning(
   db: Database.Database,
   now = new Date(),
+  requestedStart?: string,
 ): WeeklyPlanning {
   const today = calendarDate(now),
-    start = mondayOf(today),
+    start = requestedStart ?? mondayOf(today),
     repo = new TrainingRepository(db),
     garmin = new GarminRepository(db),
     schedule = new ScheduleRepository(db);
+  if (start !== mondayOf(today) && start !== shiftDay(mondayOf(today), 7))
+    throw new Error("Review this week or the immediately following week.");
   const plans = repo.plans(),
-    current = plans.find((p) => p.start === start),
+    expected = milestoneForWeek(start, plans),
+    savedCurrent = plans.find((p) => p.start === start),
+    correction = !!savedCurrent && savedCurrent.weekNumber !== expected.stage,
+    current = correction ? undefined : savedCurrent,
     reference = plans
       .filter((p) => shiftDay(p.start, 7) <= start)
       .sort((a, b) => b.start.localeCompare(a.start))[0];
@@ -127,16 +135,6 @@ export function weeklyPlanning(
     !allSettings[start] && week.hyrox.friday === "undecided";
   if (adjustedFriday) week.hyrox.friday = "skipping";
   const load = combinedLoadReview(measuredLoad(activities, efforts, now));
-  const progression = assessProgression({
-    now,
-    plans: plans.filter((p) => p.start < start),
-    weeks,
-    activities,
-    checkIns: checks,
-    lastSync,
-    load,
-    recovery,
-  });
   const development = developmentReadiness(
     athlete,
     trainingEvidencePlans(db, plans, activities, now),
@@ -155,35 +153,44 @@ export function weeklyPlanning(
         new Date(shiftDay(reference.start, 7) + "T12:00:00Z"),
       ).find((w) => w.start === reference.start))
     : undefined;
-  const referenceAffected =
-    !!reference &&
-    trainingCalendar(db, reference, activities, now).days.some((d) => !!d.rule);
+  const referenceCalendar = reference
+    ? trainingCalendar(db, reference, activities, now)
+    : null;
+  const referenceAffected = !!referenceCalendar?.days.some(
+    (d) =>
+      d.rule && ["paused", "return_review", "return"].includes(d.rule.phase),
+  );
   const gate = calendarGate(commitments, today, start);
+  const volumeGate = calendarGate({ ...commitments, races: [] }, today, start);
   const recentReference =
     !!reference && reference.start === shiftDay(start, -7);
+  const priorKm = reference ? planKm(reference) : 25;
+  const referenceExpected = referenceCalendar
+    ? calendarMileage(referenceCalendar, reference!.easyPace).countedKm
+    : priorKm;
   const completed =
     !!reference &&
     recentReference &&
     !!referenceWeek &&
-    referenceWeek.runningKm >= planKm(reference) * 0.9;
-  const stage =
-    current?.weekNumber ??
-    (reference
-      ? Math.min(
-          30,
-          reference.weekNumber +
-            (completed && !referenceAffected && !gate.blocked ? 1 : 0),
-        )
-      : 1);
+    referenceWeek.runningKm >= Math.max(5, referenceExpected) * 0.9;
+  const stage = current?.weekNumber ?? expected.stage;
   const ceiling = volumeMilestones[stage - 1];
-  const priorKm = reference ? planKm(reference) : 25;
-  let distance = current?.targetKm ?? Math.min(ceiling, priorKm);
+  const fresh =
+    !!lastSync &&
+    Date.parse(lastSync) <= now.getTime() &&
+    now.getTime() - Date.parse(lastSync) <= 2 * 86400000;
+  let distance = current?.targetKm ?? ceiling;
   if (!current && reference && !recentReference) {
-    const completedRecent = weeks.filter((w) => !w.partial).slice(-2);
-    const observed =
-      completedRecent.reduce((sum, w) => sum + w.runningKm, 0) / 2;
+    const recentWeeks = weeks.filter((w) => !w.partial).slice(-2);
+    const observed = recentWeeks.reduce((n, w) => n + w.runningKm, 0) / 2;
     distance = Math.max(20, Math.min(distance, observed));
   }
+  if (
+    !current &&
+    reference &&
+    (!completed || !fresh || volumeGate.blocked || referenceAffected)
+  )
+    distance = Math.min(distance, ceiling, priorKm);
   const reasons: string[] = [];
   if (reference)
     reasons.push(
@@ -193,34 +200,39 @@ export function weeklyPlanning(
     reasons.push(
       "Start from a 25 km baseline; Garmin history is retained and reviewed before increasing.",
     );
-  if (
-    !current &&
-    progression.decision === "increase" &&
-    progression.suggestedKm !== null &&
-    completed &&
-    !gate.blocked &&
-    !referenceAffected
-  )
-    distance = Math.min(ceiling, progression.suggestedKm);
-  if (!current && progression.decision === "reduce")
-    distance = Math.min(
-      distance,
-      Math.max(20, progression.suggestedKm ?? priorKm * 0.85),
-    );
-  if (!current && recovery.status === "caution")
+  const severe = checks.some(
+    (c) =>
+      c.day <= today &&
+      c.day >= shiftDay(today, -2) &&
+      (c.pain > 0 || c.fatigue >= 4 || c.soreness >= 4),
+  );
+  if (!current && (severe || recovery.status === "caution"))
     distance = Math.min(distance, Math.max(20, priorKm * 0.85));
-  if (!completed && reference)
+  if (!current && reference && !completed)
     reasons.push(
-      recentReference
-        ? "Repeat the established stage while completing its running volume; missed distance is not made up."
-        : "The saved stage is remembered. Re-establish a current baseline after the gap.",
+      "The recent prescribed calendar is incomplete or there is a training gap. Review the running baseline rather than catching up missed distance.",
     );
-  if (referenceAffected || gate.blocked)
+  if (volumeGate.blocked || referenceAffected)
     reasons.push(
-      gate.reason ||
-        "A race or break affected the baseline. Hold ordinary progression.",
+      volumeGate.reason || "A break or return review affects this baseline.",
     );
-  reasons.push(progression.reasons[0]);
+  if (!fresh) reasons.push("Sync Garmin before approving a running increase.");
+  if (gate.blocked && !volumeGate.blocked)
+    reasons.push(
+      "Race windows shape intensity and session placement; they do not automatically freeze the mileage milestone.",
+    );
+  if (correction)
+    reasons.push(
+      `Saved Stage ${savedCurrent!.weekNumber} is stale: this calendar week belongs to Stage ${stage}. Review the corrected ${ceiling} km proposal; the old snapshot stays active until acceptance.`,
+    );
+  reasons.push(
+    `Milestone sequence: Stage ${stage} targets ${ceiling} km. Races count by course distance; Hyrox and race warm-up/cool-down are excluded from mileage but retained in physical load.`,
+  );
+  reasons.push(
+    distance >= ceiling - 0.01
+      ? "The milestone target is prepared while pace and quality exposure stay at their reviewed settings."
+      : "The proposed distance is below the milestone because the supplied running, recovery or calendar evidence needs review.",
+  );
   reasons.push(
     "Daily check-ins and session-effort ratings are optional. Report pain or unusual fatigue when it occurs.",
   );
@@ -256,7 +268,7 @@ export function weeklyPlanning(
     km: number,
     reduced = false,
   ): WeeklyPlanOption => {
-    const plan = structuredClone(
+    let plan = structuredClone(
       developedPlan(
         {
           weekNumber: stage,
@@ -282,10 +294,8 @@ export function weeklyPlanning(
         },
       ),
     );
-    const lighter =
-      reduced ||
-      (!plan.cutback && progression.decision === "reduce") ||
-      recovery.status === "caution";
+    plan.planningVersion = 2;
+    const lighter = reduced || severe || recovery.status === "caution";
     const optionWeek = lighter
       ? {
           ...structuredClone(week),
@@ -326,55 +336,95 @@ export function weeklyPlanning(
         ],
       }));
     }
+    const distributed = distributeMileage(plan, longest);
+    if (distributed) plan = distributed;
     validateRunningSchedule(plan);
-    const calendar = applyAvailability(
-      applyCommitments(
-        buildWeekSchedule(plan, optionWeek, preferences, [], records),
-        plan,
-        commitments,
-        athlete.targets,
-        {
-          today,
-          returnReady: returnReady(db, now),
-          raceRecovery: raceRecoveryEvidence(db, now),
-          approvedRestDays: commitmentsRepo.restDays(),
-          longestRecentKm: longest,
-        },
+    const project = () =>
+      applyAvailability(
+        applyCommitments(
+          buildWeekSchedule(plan, optionWeek, preferences, [], records),
+          plan,
+          commitments,
+          athlete.targets,
+          {
+            today,
+            returnReady: returnReady(db, now),
+            raceRecovery: raceRecoveryEvidence(db, now),
+            approvedRestDays: commitmentsRepo.restDays(),
+            longestRecentKm: longest,
+          },
+        ),
+        schedule.availability(),
+      );
+    const fitted = fitMileageWeek(project(), plan, commitments, {
+      today,
+      longestRecentKm: longest,
+      raceRecovery: raceRecoveryEvidence(db, now),
+    });
+    let calendar = fitted.calendar;
+    const needsLessSupport = () => {
+      const r = reviewPlannedWeek(calendar, plan, load);
+      return (
+        r.hardDays > 3 ||
+        r.suggestedSkips.length > 0 ||
+        !!(r.baselineAu && r.estimatedAu > r.baselineAu * 1.15)
+      );
+    };
+    for (const [key, offset] of [
+      ["friday", 4],
+      ["monday", 0],
+      ["wednesday", 2],
+    ] as const) {
+      if (!needsLessSupport()) break;
+      if (optionWeek.hyrox[key] === "skipping") continue;
+      optionWeek.hyrox[key] = "skipping";
+      optionWeek.cycleWhenSkippingHyrox = false;
+      calendar = fitMileageWeek(project(), plan, commitments, {
+        today,
+        longestRecentKm: longest,
+        raceRecovery: raceRecoveryEvidence(db, now),
+      }).calendar;
+      if (id === "recommended")
+        reasons.push(
+          `${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][offset]} Hyrox is skipped in this proposal to protect running progression; no replacement ride is added automatically.`,
+        );
+    }
+    for (const offset of [4, 5, 1, 3, 0, 2]) {
+      if (!needsLessSupport()) break;
+      if (!optionWeek.cyclingDays.includes(offset)) continue;
+      optionWeek.cyclingDays = optionWeek.cyclingDays.filter(
+        (d) => d !== offset,
+      );
+      calendar = fitMileageWeek(project(), plan, commitments, {
+        today,
+        longestRecentKm: longest,
+        raceRecovery: raceRecoveryEvidence(db, now),
+      }).calendar;
+      if (id === "recommended")
+        reasons.push(
+          `Supporting cycling on day ${offset + 1} is omitted from this proposal to keep running first.`,
+        );
+    }
+    return {
+      id,
+      plan,
+      preferences: optionWeek,
+      calendar,
+      rebalanced: calendar.days.some((d) =>
+        d.warnings.some((w) => w.startsWith("This proposed week reallocates")),
       ),
-      schedule.availability(),
-    );
-    return { id, plan, preferences: optionWeek, calendar };
+    };
   };
   let recommendation = make("recommended", distance);
-  if (!current && reference && distance > priorKm + 0.05) {
-    // Generated weekly totals must also respect the actual longest completed run.
-    while (
-      distance > priorKm + 0.05 &&
-      longest > 0 &&
-      Math.max(
-        ...recommendation.plan.workouts.map((w) =>
-          workoutKm(w, recommendation.plan.easyPace),
-        ),
-      ) >
-        longest * 1.1 + 0.01
-    ) {
-      distance = Math.max(priorKm, Math.round((distance - 0.1) * 100) / 100);
-      recommendation = make("recommended", distance);
-    }
-    const review = reviewPlannedWeek(
-      recommendation.calendar,
-      recommendation.plan,
-      load,
+  if (
+    !current &&
+    longest > 0 &&
+    !distributeMileage(recommendation.plan, longest)
+  ) {
+    recommendation = make("recommended", Math.min(ceiling, priorKm));
+    reasons.push(
+      "The mileage target cannot yet fit the recent single-run distances and lunch limits. Review the distribution before increasing.",
     );
-    if (
-      review.hardDays > 3 ||
-      (review.baselineAu && review.estimatedAu > review.baselineAu * 1.15)
-    ) {
-      recommendation = make("recommended", Math.min(ceiling, priorKm));
-      reasons.push(
-        "Keep running volume steady while supporting-workload concerns are reviewed.",
-      );
-    }
   }
   options.push(recommendation);
   const steady = make(
@@ -392,13 +442,29 @@ export function weeklyPlanning(
   const painReported = checks.some(
     (c) => c.day <= today && c.day >= shiftDay(today, -2) && c.pain > 0,
   );
-  const blockedReason = painReported
-    ? "Recent pain is reported. Review recovery or use a training break before activating another week."
-    : commitments.pauses.some(
-          (p) => pauseActive(p, today) || pendingReturn(p, today),
+  const pendingRace = commitments.races.some(
+    (r) =>
+      r.status !== "cancelled" &&
+      r.day === today &&
+      today < start &&
+      activities
+        .filter(
+          (a) =>
+            sportGroup(a) === "running" &&
+            calendarDate(new Date(a.startedAt)) === today,
         )
-      ? gate.reason
-      : null;
+        .reduce((n, a) => n + countedActivityKm(a), 0) <
+        r.distanceKm * 0.9,
+  );
+  const blockedReason = pendingRace
+    ? "Finish and sync today's registered race before accepting the next week's increase; its recovery evidence is not available yet."
+    : painReported
+      ? "Recent pain is reported. Review recovery or use a training break before activating another week."
+      : commitments.pauses.some(
+            (p) => pauseActive(p, today) || pendingReturn(p, today),
+          )
+        ? gate.reason
+        : null;
   const comparison = comparableRuns(
     activities.filter((a) => calendarDate(new Date(a.startedAt)) < start),
     now,
@@ -409,10 +475,6 @@ export function weeklyPlanning(
     secondsPerKmChange: comparison.secondsPerKmChange,
     weatherMissing: comparison.weatherMissing,
   };
-  const fresh =
-    !!lastSync &&
-    Date.parse(lastSync) <= now.getTime() &&
-    now.getTime() - Date.parse(lastSync) <= 2 * 86400000;
   const support = supportingWorkload(weeks, shiftDay(start, -7));
   const reductionEvidence: WeeklyPlanning["selectionPolicy"]["reductionEvidence"] =
     [];
@@ -432,17 +494,6 @@ export function weeklyPlanning(
     reductionEvidence.push({
       code: "reported_recovery",
       detail: "Recent reported pain, fatigue or soreness calls for review.",
-    });
-  if (support.increased)
-    reductionEvidence.push({
-      code: "supporting_increase",
-      detail: `Supporting training rose from a recent ${support.baselineMinutes!.toFixed(1)} min/week average to ${support.recentMinutes.toFixed(1)} min (${Math.round(support.change! * 100)}% increase).`,
-    });
-  if (load.latest.hardDays > 3 || (load.change !== null && load.change > 0.15))
-    reductionEvidence.push({
-      code: "combined_load",
-      detail:
-        "Observed rated effort growth or more than three rated hard days requires review.",
     });
   const plannedReview = reviewPlannedWeek(
     recommendation.calendar,
@@ -471,15 +522,16 @@ export function weeklyPlanning(
       code: "stale_data",
       detail: "Garmin data is missing or over two days old.",
     });
-  if (gate.blocked || referenceAffected)
+  if (volumeGate.blocked || referenceAffected)
     reductionEvidence.push({
       code: "calendar_restriction",
-      detail: gate.reason || "A race or break affects the baseline.",
+      detail:
+        volumeGate.reason || "A break or return review affects the baseline.",
     });
   const selectionPolicy = { supportingWorkload: support, reductionEvidence };
   reasons.push(
     support.increased
-      ? reductionEvidence.find((e) => e.code === "supporting_increase")!.detail
+      ? "Supporting workload increased; the proposal scales supporting sessions before reducing running mileage."
       : "Routine Hyrox and cycling are supporting-workload context, not an independent reason to hold a supported running increase.",
   );
   const history = {
@@ -509,7 +561,12 @@ export function weeklyPlanning(
         return {
           day: calendarDate(new Date(a.startedAt)),
           sport: sportGroup(a),
-          km: Math.round((a.distanceMeters ?? 0) / 10) / 100,
+          km:
+            Math.round(
+              (sportGroup(a) === "running"
+                ? countedActivityKm(a)
+                : (a.distanceMeters ?? 0) / 1000) * 100,
+            ) / 100,
           minutes: Math.round((a.durationSeconds ?? 0) / 6) / 10,
           averageHeartRate: a.averageHeartRate,
           paceSecondsPerKm:
@@ -612,12 +669,15 @@ export function weeklyPlanning(
     token: fingerprint({ evidenceHash, selected, source }),
     evidenceHash,
     needsApproval: !current,
+    correction: correction
+      ? { savedStage: savedCurrent!.weekNumber, expectedStage: stage }
+      : undefined,
     blockedReason,
     reference: reference
       ? {
           start: reference.start,
           stage: reference.weekNumber,
-          plannedKm: priorKm,
+          plannedKm: referenceExpected,
           recordedKm: referenceWeek?.runningKm ?? 0,
           runs: referenceWeek?.runs ?? 0,
         }

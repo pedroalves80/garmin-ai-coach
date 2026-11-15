@@ -1,3 +1,8 @@
+import {
+  countedActivityKm,
+  raceExtraMeters,
+  workoutMileageKm,
+} from "../../shared/mileage";
 import { raceRecoveryEvidence } from "./race-recovery";
 import { RacePacingRepository } from "./race-pacing-repository";
 import type Database from "better-sqlite3";
@@ -86,7 +91,14 @@ export function trainingDashboardData(
     currentPlan ?? (hasCommitments ? eventOnlyPlan(monday, 375, 270) : null);
   const weeklyRecommendation = weeklyPlanning(sqlite, now);
   const recoveryEvidence = garminRecovery(healthEvidence(sqlite, today), today);
-  const previewPlan = currentPlan ?? weeklyRecommendation.selected.plan;
+  const previewPlan = weeklyRecommendation.needsApproval
+    ? weeklyRecommendation.selected.plan
+    : (currentPlan ?? weeklyRecommendation.selected.plan);
+  const nextWeeklyRecommendation = weeklyPlanning(
+    sqlite,
+    now,
+    shiftDay(monday, 7),
+  );
   const completed = weeks.filter((w) => !w.partial);
   const average = completed.reduce((sum, w) => sum + w.runningKm, 0) / 4;
   const recent = completed.at(-1)!,
@@ -154,7 +166,7 @@ export function trainingDashboardData(
     load,
     recovery: recoveryEvidence,
   });
-  if (gate.blocked || referenceAffected) {
+  if (calendarGate({ ...commitments, races: [] }, today, monday).blocked) {
     progression.decision = "hold";
     progression.reasons.unshift(development.reason);
     progression.suggestedKm = null;
@@ -168,6 +180,7 @@ export function trainingDashboardData(
     paceEvidence,
     racePaceAdvice,
     weeklyRecommendation,
+    nextWeeklyRecommendation,
     recoveryEvidence,
     today,
     commitments,
@@ -206,6 +219,9 @@ export function trainingDashboardData(
         sport: sportGroup(a),
         minutes: (a.durationSeconds ?? 0) / 60,
         km: (a.distanceMeters ?? 0) / 1000,
+        countedKm: sportGroup(a) === "running" ? countedActivityKm(a) : 0,
+        raceExtraKm: raceExtraMeters(a) / 1000,
+        mileageRaceId: a.mileageRaceId ?? null,
         rpe: efforts.find((e) => e.activityId === a.id)?.rpe ?? null,
         prescriptionCompleted:
           efforts.find((e) => e.activityId === a.id)?.prescriptionCompleted ??
@@ -213,7 +229,7 @@ export function trainingDashboardData(
       })),
     todayRunning: {
       runs: todayRuns.length,
-      km: todayRuns.reduce((sum, a) => sum + (a.distanceMeters ?? 0) / 1000, 0),
+      km: todayRuns.reduce((sum, a) => sum + countedActivityKm(a), 0),
       minutes: todayRuns.reduce(
         (sum, a) => sum + (a.durationSeconds ?? 0) / 60,
         0,
@@ -271,7 +287,7 @@ export function trainingDashboardData(
     overrides,
     plannedKm: calendarPlan
       ? effectiveRuns.reduce(
-          (n, w) => n + workoutKm(w, calendarPlan.easyPace),
+          (n, w) => n + workoutMileageKm(w, calendarPlan.easyPace),
           0,
         )
       : null,

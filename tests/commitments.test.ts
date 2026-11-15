@@ -1,3 +1,4 @@
+import { calendarMileage } from "../src/shared/mileage";
 import { weekPurpose } from "../src/shared/week-purpose";
 import { longRunTerrain } from "../src/shared/trail-running";
 import { raceRecoveryEvidence } from "../src/server/training/race-recovery";
@@ -120,14 +121,7 @@ function preview(
   );
 }
 function km(calendar: ReturnType<typeof preview>) {
-  return calendar.days
-    .flatMap((d) => d.sessions)
-    .reduce(
-      (n, s) =>
-        n +
-        (s.session.sport === "running" ? workoutKm(s.session.workout, 375) : 0),
-      0,
-    );
+  return calendarMileage(calendar, 375).countedKm;
 }
 function activity(id: string, day: string, km: number): ActivityMeasurement {
   return {
@@ -650,7 +644,14 @@ test("training events keep frequency and trim only excess distance inside the re
     ).length,
     5,
   );
-  assert(cal.days[3].rule?.notes.some((n) => n.includes("Only the excess")));
+  assert(
+    cal.days.some((d) =>
+      d.rule?.notes.some(
+        (n) => n.includes("allocated") || n.includes("Only the excess"),
+      ),
+    ),
+  );
+  assert.equal(calendarMileage(cal, 375).totalKm, 41.5);
   assert(cal.days.every((d) => d.sessions.length <= 2));
   for (const d of cal.days)
     validateDaySessions(

@@ -34,6 +34,12 @@ export function TodayOverview({
   return (
     <div className="screen-stack">
       <WeeklyPlanReview planning={training.weeklyRecommendation} compact />
+      {!training.weeklyRecommendation.needsApproval && (
+        <WeeklyPlanReview
+          planning={training.nextWeeklyRecommendation}
+          compact
+        />
+      )}
       <section className="today-hero" aria-labelledby="today-run-heading">
         <div className="hero-content">
           <span className="hero-label">

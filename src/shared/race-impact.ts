@@ -1,6 +1,6 @@
+import { workoutMileageKm } from "./mileage";
 import { applyCommitments, raceWindow } from "./commitment-calendar";
 import { dayOffsetDate } from "./weekly-schedule";
-import { workoutKm } from "./training-plan";
 import { weekMonday } from "./week-view";
 import type { RaceEvent, Commitments } from "./types/commitments";
 import type { RunningTargets } from "./types/athlete";
@@ -53,7 +53,7 @@ export function compareRaceImpact(input: {
         (n, s) =>
           n +
           (s.session.sport === "running"
-            ? workoutKm(s.session.workout, plan.easyPace)
+            ? workoutMileageKm(s.session.workout, plan.easyPace)
             : 0),
         0,
       ),

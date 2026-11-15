@@ -1,3 +1,4 @@
+import { milestoneForWeek, distributeMileage } from "./milestones";
 import { dayOffsetDate } from "./weekly-schedule";
 import { eventOnlyPlan } from "./commitment-calendar";
 import { developedPlan } from "./plan-development";
@@ -22,11 +23,20 @@ export function weekView(
     plans: TrainingPlan[];
     prepared: TrainingPlan;
     athlete: AthleteProfile;
+    longestRecentKm?: number;
   },
 ) {
   const { monday, plans, prepared, athlete } = context;
   const saved = plans.find((p) => p.start === start);
-  if (saved) return { plan: saved, kind: "reviewed" as const };
+  const expected = milestoneForWeek(start, plans);
+  const correction =
+    !!saved && start >= monday && saved.weekNumber !== expected.stage;
+  if (saved && !correction) return { plan: saved, kind: "reviewed" as const };
+  if (start === prepared.start && (!saved || correction))
+    return {
+      plan: prepared,
+      kind: correction ? ("correction" as const) : ("prepared" as const),
+    };
   if (start === monday) return { plan: prepared, kind: "prepared" as const };
   if (start < monday)
     return {
@@ -37,22 +47,14 @@ export function weekView(
     [...plans, prepared]
       .filter((p) => p.start < start)
       .sort((a, b) => b.start.localeCompare(a.start))[0] ?? prepared;
-  const ahead = Math.max(
-    1,
-    Math.round(
-      (Date.parse(start + "T12:00:00Z") -
-        Date.parse(anchor.start + "T12:00:00Z")) /
-        (7 * 86400000),
-    ),
-  );
-  const stage = Math.min(volumeMilestones.length, anchor.weekNumber + ahead);
+  const stage = expected.stage;
   const plan = developedPlan(
     {
       weekNumber: stage,
       start,
       easyPace: anchor.easyPace,
       tempoPace: anchor.tempoPace,
-      targetKm: Math.min(anchor.targetKm, volumeMilestones[stage - 1]),
+      targetKm: volumeMilestones[stage - 1],
     },
     athlete,
     plans,
@@ -62,7 +64,14 @@ export function weekView(
       referenceStart: null,
     },
   );
-  return { plan, kind: "projection" as const };
+  const distributed =
+    start <= dayOffsetDate(monday, 7)
+      ? distributeMileage(plan, context.longestRecentKm ?? 0)
+      : plan;
+  return {
+    plan: distributed ?? plan,
+    kind: correction ? ("correction" as const) : ("projection" as const),
+  };
 }
 export function attendanceForWeek(
   start: string,

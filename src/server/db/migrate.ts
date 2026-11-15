@@ -93,6 +93,7 @@ export function migrateDatabase(sqlite: Database.Database) {
   CREATE UNIQUE INDEX IF NOT EXISTS race_pace_evidence_reference_idx ON race_pace_evidence(day,source,distance_km);
   CREATE TABLE IF NOT EXISTS race_events(id TEXT PRIMARY KEY,day TEXT NOT NULL,item_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS training_pauses(id TEXT PRIMARY KEY,start TEXT NOT NULL,item_json TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS activity_mileage(activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,race_id TEXT REFERENCES race_events(id),excluded_meters REAL NOT NULL CHECK(excluded_meters>=0),updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS athlete_profile(id INTEGER PRIMARY KEY CHECK(id=1),profile_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS session_efforts(activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,rpe INTEGER NOT NULL CHECK(rpe BETWEEN 1 AND 10),prescription_completed INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
 `);

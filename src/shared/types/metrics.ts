@@ -7,6 +7,8 @@ export type ActivityMeasurement = {
   distanceMeters: number | null;
   averageHeartRate: number | null;
   rawJson: string;
+  excludedRaceMeters?: number;
+  mileageRaceId?: string | null;
 };
 
 export type DailyCheckIn = {
@@ -21,6 +23,8 @@ export type TrainingWeek = {
   start: string;
   partial: boolean;
   runningKm: number;
+  totalRunningKm?: number;
+  raceExtraKm?: number;
   runningMinutes: number;
   runs: number;
   cyclingMinutes: number;
@@ -51,6 +55,7 @@ export type RunWorkout = {
   title: string;
   type: "base" | "strides" | "quality" | "long" | "recovery" | "race";
   race?: import("./commitments").RaceEvent;
+  calendarAdjustment?: { raceId: string; phase: "preparation" };
   trail?: {
     expectedMinutes: number;
     ascentM?: number;
@@ -60,6 +65,7 @@ export type RunWorkout = {
 };
 
 export type TrainingPlan = {
+  planningVersion?: 2;
   development?: import("./athlete").PlanDevelopment;
   weekNumber: number;
   start: string;

@@ -10,7 +10,7 @@ import type {
   WeekPreferences,
   HyroxAttendance,
 } from "@/shared/types/schedule";
-import { workoutKm } from "@/shared/training-plan";
+import { workoutMileageKm as workoutKm } from "@/shared/mileage";
 import { SessionCard } from "../molecules/SessionCard";
 import { ScheduleAdjustments } from "./ScheduleAdjustments";
 import { Button } from "../atoms/Button";

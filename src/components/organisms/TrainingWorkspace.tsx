@@ -1,4 +1,6 @@
 "use client";
+import { fitMileageWeek } from "@/shared/fit-mileage-week";
+import { calendarMileage, workoutMileageKm } from "@/shared/mileage";
 import { weekPurpose } from "@/shared/week-purpose";
 import { applyAvailability } from "@/shared/schedule-editing";
 import { WeekNavigator } from "../molecules/WeekNavigator";
@@ -22,7 +24,6 @@ import {
   planKm,
   minimumRunKm,
   volumeMilestones,
-  workoutKm,
 } from "@/shared/training-plan";
 import { developedPlan } from "@/shared/plan-development";
 import { WeeklyLoadReview } from "./WeeklyLoadReview";
@@ -101,7 +102,11 @@ function TrainingWeekEditor({
       ? weekView(weekMonday(requestedDay), {
           monday: data.monday,
           plans: data.plans,
-          prepared: data.weeklyRecommendation.selected.plan,
+          prepared:
+            data.nextWeeklyRecommendation.start === weekMonday(requestedDay)
+              ? data.nextWeeklyRecommendation.selected.plan
+              : data.weeklyRecommendation.selected.plan,
+          longestRecentKm: data.calendarOptions.longestRecentKm,
           athlete: data.athlete,
         }).plan
       : data.previewPlan;
@@ -136,12 +141,17 @@ function TrainingWeekEditor({
         )
       : null,
   );
-  const prepared = data.weeklyRecommendation.selected;
+  const reviewForView =
+    start === data.nextWeeklyRecommendation.start
+      ? data.nextWeeklyRecommendation
+      : data.weeklyRecommendation;
+  const prepared = reviewForView.selected;
   const view = weekView(start, {
     monday: data.monday,
     plans: data.plans,
     prepared: prepared.plan,
     athlete: data.athlete,
+    longestRecentKm: data.calendarOptions.longestRecentKm,
   });
   const viewAttendance = attendanceForWeek(
     start,
@@ -230,18 +240,25 @@ function TrainingWeekEditor({
       ) ||
       !!data.reviewedCalendars[start]);
   const calendar = preview
-    ? saved && data.reviewedCalendars[start]
-      ? data.reviewedCalendars[start]
-      : applyAvailability(
-          applyCommitments(
-            buildWeekSchedule(preview, viewAttendance, data.preferences),
+    ? !saved && matchesPrepared
+      ? prepared.calendar
+      : saved && data.reviewedCalendars[start]
+        ? data.reviewedCalendars[start]
+        : fitMileageWeek(
+            applyAvailability(
+              applyCommitments(
+                buildWeekSchedule(preview, viewAttendance, data.preferences),
+                preview,
+                data.commitments,
+                data.athlete.targets,
+                data.calendarOptions,
+              ),
+              data.availability,
+            ),
             preview,
             data.commitments,
-            data.athlete.targets,
             data.calendarOptions,
-          ),
-          data.availability,
-        )
+          ).calendar
     : null;
   const effectiveRuns =
     calendar?.days
@@ -251,7 +268,7 @@ function TrainingWeekEditor({
     (n, s) =>
       n +
       (s.session.sport === "running"
-        ? workoutKm(s.session.workout, preview!.easyPace)
+        ? workoutMileageKm(s.session.workout, preview!.easyPace)
         : 0),
     0,
   );
@@ -276,9 +293,10 @@ function TrainingWeekEditor({
         max={weekMonday(offset(data.monday, 730))}
         onChange={(monday) => browseWeek(monday)}
       />
-      {start === data.monday && (
+      {(start === data.monday ||
+        start === data.nextWeeklyRecommendation.start) && (
         <WeeklyPlanReview
-          planning={data.weeklyRecommendation}
+          planning={reviewForView}
           matches={matchesPrepared}
           onUse={() => loadPreparedWeek()}
           onAccepted={(plan) => {
@@ -391,11 +409,13 @@ function TrainingWeekEditor({
           <StatusBadge tone={saved ? "success" : "info"}>
             {saved
               ? "Reviewed week"
-              : view.kind === "projection" && matchesView
-                ? "Future preview"
-                : start < data.monday
-                  ? "Past week"
-                  : "Draft preview"}
+              : view.kind === "correction"
+                ? "Correction pending"
+                : view.kind === "projection" && matchesView
+                  ? "Future preview"
+                  : start < data.monday
+                    ? "Past week"
+                    : "Draft preview"}
           </StatusBadge>
         </div>
         <div className="plan-totals">
@@ -411,11 +431,22 @@ function TrainingWeekEditor({
             {weekPurpose(calendar, preview?.cutback)}
           </span>
         </div>
+        {calendar && preview && (
+          <p className="muted small-text">
+            Mileage target excludes Hyrox and race warm-up/cool-down.{" "}
+            {calendarMileage(calendar, preview.easyPace).totalKm.toFixed(1)} km
+            total running, including{" "}
+            {calendarMileage(calendar, preview.easyPace).raceExtrasKm.toFixed(
+              1,
+            )}{" "}
+            km race extras; all running minutes still inform load.
+          </p>
+        )}
         {readOnlyView && (
           <p className="inline-notice small-text">
             {start < data.monday
               ? "Past week · browsing keeps its saved steps and history intact."
-              : "Future preview · mileage is held at the latest baseline, with race and break rules applied. Stage and distance are provisional; the coach prepares the final week from completed training."}{" "}
+              : "Future milestone forecast · the 25, 27, 29, 23… sequence is shown with race and break rules applied. Final approval reviews recovery, actual running and supporting sessions; browsing does not activate extra distance."}{" "}
             Browsing does not save or activate a week.
           </p>
         )}
@@ -494,12 +525,12 @@ function TrainingWeekEditor({
             type="button"
             className="button-secondary"
             onClick={() => {
-              if (data.progression.suggestedKm !== null)
+              if (reviewForView.selected.plan.targetKm !== null)
                 setTargetKm(
                   String(
                     Math.min(
                       volumeMilestones[week - 1],
-                      data.progression.suggestedKm,
+                      reviewForView.selected.plan.targetKm,
                     ),
                   ),
                 );
@@ -524,7 +555,7 @@ function TrainingWeekEditor({
           </p>
           {!readOnlyView &&
             start >= data.monday &&
-            !(data.weeklyRecommendation.needsApproval && matchesPrepared) && (
+            !(reviewForView.needsApproval && matchesPrepared) && (
               <Button disabled={pending || !preview || !!saved} type="submit">
                 {pending ? "Saving…" : "Save edited week"}
               </Button>

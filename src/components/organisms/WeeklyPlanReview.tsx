@@ -35,7 +35,7 @@ export function WeeklyPlanReview({
           "Content-Type": "application/json",
           "x-coach-request": "local",
         },
-        body: JSON.stringify({ token: planning.token }),
+        body: JSON.stringify({ token: planning.token, start: planning.start }),
       });
       const result = await response.json();
       if (!response.ok)
@@ -80,17 +80,29 @@ export function WeeklyPlanReview({
           recorded · {reference.runs} runs · week of {reference.start}
         </p>
       )}
+      {planning.correction && (
+        <p className="inline-notice">
+          Saved Stage {planning.correction.savedStage} needs correction to Stage{" "}
+          {planning.correction.expectedStage}. Review and accept this proposal;
+          saved steps and adjustments are retained until then.
+        </p>
+      )}
       <p>{planning.summary}</p>
       <p className="muted small-text">
-        {plan.targetKm.toFixed(1)} km · {plan.workouts.length} running days ·
-        supporting sessions planned around running. Nothing becomes active until
-        you accept.
+        {plan.targetKm.toFixed(1)} km ·{" "}
+        {
+          planning.selected.calendar.days.filter((d) =>
+            d.sessions.some((s) => s.session.sport === "running"),
+          ).length
+        }{" "}
+        running days · supporting sessions planned around running. Nothing
+        becomes active until you accept.
       </p>
       {planning.blockedReason && (
         <p className="inline-notice">{planning.blockedReason}</p>
       )}
       {compact ? (
-        <Link className="button" href="/plan">
+        <Link className="button" href={`/plan?date=${planning.start}`}>
           Review prepared week →
         </Link>
       ) : (
@@ -104,7 +116,9 @@ export function WeeklyPlanReview({
               {pending
                 ? "Accepting…"
                 : matches
-                  ? "Accept this week"
+                  ? planning.correction
+                    ? "Accept corrected week"
+                    : "Accept this week"
                   : "Use prepared week"}
             </Button>
             <Button

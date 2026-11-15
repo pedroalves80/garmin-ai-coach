@@ -1,4 +1,8 @@
+import { fitMileageWeek } from "../../shared/fit-mileage-week";
+import { applyAvailability } from "../../shared/schedule-editing";
+import { milestoneForWeek, distributeMileage } from "../../shared/milestones";
 import type Database from "better-sqlite3";
+import type { WeekSchedule } from "../../shared/types/schedule";
 import type { TrainingPlan } from "../../shared/types/metrics";
 import { CommitmentRepository } from "./commitment-repository";
 import {
@@ -29,6 +33,7 @@ export function saveReviewedPlan(
   input: unknown,
   now = new Date(),
   exactPlan?: TrainingPlan,
+  exactCalendar?: WeekSchedule,
 ) {
   const parsed = planSettingsSchema.parse(input);
   const monday = mondayOf(calendarDate(now));
@@ -39,7 +44,7 @@ export function saveReviewedPlan(
   const { weekNumber, start, easyPace, tempoPace, targetKm } = parsed;
   const repository = new TrainingRepository(db),
     data = trainingDashboardData(now, db);
-  const plan =
+  let plan =
     exactPlan ??
     developedPlan(
       { weekNumber, start, easyPace, tempoPace, targetKm },
@@ -59,58 +64,93 @@ export function saveReviewedPlan(
       "The proposed plan does not match its reviewed settings.",
       409,
     );
+  plan = { ...plan, planningVersion: 2 };
   validateRunningSchedule(plan);
-  // Higher milestones are previews. Approval advances only one stage at a time.
   const previous = repository
     .plans()
     .filter((p) => p.start < start)
     .sort((a, b) => b.start.localeCompare(a.start))[0];
   const existing = repository.plans().find((p) => p.start === start);
-  if (existing && existing.weekNumber !== weekNumber)
+  const expected = milestoneForWeek(start, repository.plans());
+  const proposal =
+    start === data.weeklyRecommendation.start
+      ? data.weeklyRecommendation
+      : start === data.nextWeeklyRecommendation.start
+        ? data.nextWeeklyRecommendation
+        : null;
+  if (weekNumber !== expected.stage && existing?.weekNumber !== weekNumber)
     throw new PlanSaveError(
-      "A saved week keeps its stage. Choose a later Monday to advance.",
+      `This week belongs to Stage ${expected.stage}; future milestones stay forecasts.`,
       409,
     );
-  if (weekNumber > (previous?.weekNumber ?? existing?.weekNumber ?? 0) + 1)
+  if (
+    existing &&
+    existing.weekNumber !== weekNumber &&
+    weekNumber !== expected.stage
+  )
+    throw new PlanSaveError("Choose the corrected calendar stage.", 409);
+  if (!proposal)
     throw new PlanSaveError(
-      "Save the starting week first, then review milestones one at a time.",
+      "Only this week or next week can be activated. Later weeks remain forecasts.",
       409,
     );
-  if (previous && planKm(plan) > planKm(previous) + 0.05) {
-    const readiness = data.progression;
-    if (
-      readiness.decision !== "increase" ||
-      readiness.suggestedKm === null ||
-      planKm(plan) > readiness.suggestedKm + 0.05
-    )
+  if (proposal.blockedReason)
+    throw new PlanSaveError(proposal.blockedReason, 409);
+  if (plan.targetKm > proposal.selected.plan.targetKm + 0.05)
+    throw new PlanSaveError(
+      `The reviewed proposal currently supports ${proposal.selected.plan.targetKm.toFixed(1)} km. Review its running and recovery evidence before increasing further.`,
+      409,
+    );
+  const longestCompleted = Math.max(
+    0,
+    ...data.effortSessions
+      .filter(
+        (a) => a.sport === "running" && a.day >= shiftDay(data.today, -30),
+      )
+      .map((a) => a.km),
+  );
+  if (!exactPlan && previous && planKm(plan) > planKm(previous) + 0.05) {
+    const distributed = distributeMileage(plan, longestCompleted);
+    if (!distributed)
       throw new PlanSaveError(
-        `Volume is not cleared for this increase. ${readiness.reasons[0]}${readiness.suggestedKm === null ? "" : ` Review about ${readiness.suggestedKm.toFixed(1)} km.`}`,
+        "The target does not fit recent single-run distances and weekday time limits. Review the mileage distribution.",
         409,
       );
+    plan = distributed;
   }
-  if (
-    !existing &&
-    start === data.monday &&
-    data.weeklyRecommendation.blockedReason
-  )
-    throw new PlanSaveError(data.weeklyRecommendation.blockedReason, 409);
   const schedule = new ScheduleRepository(db);
-  const weekSettings =
-    schedule.weeks()[start] ??
-    (start === data.monday
-      ? data.weeklyRecommendation.selected.preferences
-      : schedule.week(start));
-  const proposedReview = reviewPlannedWeek(
-    applyCommitments(
-      buildWeekSchedule(plan, weekSettings, schedule.preferences()),
+  const weekSettings = exactPlan
+    ? (schedule.weeks()[start] ?? proposal.selected.preferences)
+    : proposal.selected.preferences;
+  const selectedCalendar =
+    exactCalendar ??
+    fitMileageWeek(
+      applyAvailability(
+        applyCommitments(
+          buildWeekSchedule(
+            plan,
+            weekSettings,
+            schedule.preferences(),
+            [],
+            data.effortSessions.map((a) => ({
+              day: a.day,
+              sport: a.sport,
+              minutes: a.minutes,
+              km: a.sport === "running" ? a.countedKm : a.km,
+            })),
+          ),
+          plan,
+          data.commitments,
+          data.athlete.targets,
+          data.calendarOptions,
+        ),
+        data.availability,
+      ),
       plan,
       data.commitments,
-      data.athlete.targets,
       data.calendarOptions,
-    ),
-    plan,
-    data.load,
-  );
+    ).calendar;
+  const proposedReview = reviewPlannedWeek(selectedCalendar, plan, data.load);
   const oldTargets = previous?.development?.targets;
   const newTargets = plan.development?.targets;
   const faster =
@@ -154,7 +194,20 @@ export function saveReviewedPlan(
         (previous.development?.qualityLevel ?? 0) ||
       faster);
   const gate = calendarGate(data.commitments, data.today, start);
-  if (advancing && gate.blocked) throw new PlanSaveError(gate.reason, 409);
+  const volumeGate = calendarGate(
+    { ...data.commitments, races: [] },
+    data.today,
+    start,
+  );
+  if (advancing && volumeGate.blocked)
+    throw new PlanSaveError(volumeGate.reason, 409);
+  if (
+    (faster ||
+      (plan.development?.qualityLevel ?? 0) >
+        (previous?.development?.qualityLevel ?? 0)) &&
+    gate.blocked
+  )
+    throw new PlanSaveError(gate.reason, 409);
   if (
     advancing &&
     (proposedReview.hardDays > 3 ||
@@ -179,7 +232,14 @@ export function saveReviewedPlan(
       .map((a) => a.km),
   );
   const proposedLongest = Math.max(
-    ...plan.workouts.map((w) => workoutKm(w, plan.easyPace)),
+    0,
+    ...selectedCalendar.days.flatMap((d) =>
+      d.sessions.flatMap((s) =>
+        s.session.sport === "running" && !s.session.workout.race
+          ? [workoutKm(s.session.workout, plan.easyPace)]
+          : [],
+      ),
+    ),
   );
   if (advancing && longest > 0 && proposedLongest > longest * 1.1 + 0.01)
     throw new PlanSaveError(
@@ -187,8 +247,28 @@ export function saveReviewedPlan(
       409,
     );
   db.transaction(() => {
-    if (!schedule.weeks()[start]) schedule.saveWeek(start, weekSettings);
+    schedule.saveWeek(start, weekSettings);
     repository.savePlan(plan, now);
+    if (
+      selectedCalendar.days.some(
+        (d) =>
+          d.rule &&
+          ["race", "race_week", "race_recovery", "taper"].includes(
+            d.rule.phase,
+          ),
+      )
+    )
+      schedule.saveChanges(
+        selectedCalendar.days.map((d) => ({
+          day: d.day,
+          sessions: d.sessions.flatMap((s) =>
+            s.session.sport === "running" && s.session.workout.race
+              ? []
+              : [s.session],
+          ),
+        })),
+        null,
+      );
     const commitments = new CommitmentRepository(db);
     for (const pause of commitments.all().pauses)
       if (pause.staleWeeks?.includes(start))

@@ -1,3 +1,4 @@
+import { raceExtraMeters } from "../../shared/mileage";
 import { GarminRepository } from "../db/garmin-repository";
 import { getDatabase } from "../db/client";
 import { calendarDate, shiftDay } from "../garmin/sync";
@@ -24,8 +25,12 @@ export function dashboardData(
   return {
     weekStart: monday,
     runningKm:
-      runs.reduce((total, item) => total + (item.distanceMeters ?? 0), 0) /
-      1000,
+      runs.reduce(
+        (total, item) =>
+          total +
+          Math.max(0, (item.distanceMeters ?? 0) - raceExtraMeters(item)),
+        0,
+      ) / 1000,
     runningCount: runs.length,
     trainingMinutes:
       week

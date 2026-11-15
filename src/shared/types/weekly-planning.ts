@@ -37,6 +37,7 @@ export type WeeklyPlanOption = {
   plan: TrainingPlan;
   preferences: WeekPreferences;
   calendar: WeekSchedule;
+  rebalanced?: boolean;
 };
 export type WeeklyPlanning = {
   racePaceAdvice: RacePaceAdvice[];
@@ -44,6 +45,7 @@ export type WeeklyPlanning = {
   token: string;
   evidenceHash: string;
   needsApproval: boolean;
+  correction?: { savedStage: number; expectedStage: number };
   blockedReason: string | null;
   reference: {
     start: string;

@@ -39,8 +39,36 @@ export class GarminRepository {
       .limit(10)
       .all();
   }
-  allActivities() {
-    return this.db.select().from(activities).all();
+  allActivities(): (typeof activities.$inferSelect & {
+    excludedRaceMeters?: number;
+    mileageRaceId?: string | null;
+  })[] {
+    const exclusions = new Map(
+      (
+        prepare(
+          this.sqlite,
+          "SELECT activity_id,race_id,excluded_meters FROM activity_mileage",
+        ).all() as {
+          activity_id: string;
+          race_id: string | null;
+          excluded_meters: number;
+        }[]
+      ).map((row) => [row.activity_id, row]),
+    );
+    return this.db
+      .select()
+      .from(activities)
+      .all()
+      .map((activity) => {
+        const exclusion = exclusions.get(activity.id);
+        return exclusion
+          ? {
+              ...activity,
+              excludedRaceMeters: exclusion.excluded_meters,
+              mileageRaceId: exclusion.race_id,
+            }
+          : activity;
+      });
   }
   latestHealth() {
     return (

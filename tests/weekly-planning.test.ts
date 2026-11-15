@@ -1,3 +1,7 @@
+import { saveReviewedPlan } from "../src/server/training/save-plan";
+import { calendarMileage } from "../src/shared/mileage";
+import { trainingCalendar } from "../src/server/training/calendar";
+import { GarminRepository } from "../src/server/db/garmin-repository";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -122,7 +126,7 @@ test("completed Stage 1 prepares this Monday at Stage 2 without check-ins or RPE
   assert.equal(p.reference?.stage, 1);
   assert.equal(p.reference?.recordedKm.toFixed(2), "26.00");
   assert.equal(p.selected.plan.weekNumber, 2);
-  assert(p.selected.plan.targetKm > 25 && p.selected.plan.targetKm <= 26.3);
+  assert(p.selected.plan.targetKm > 25 && p.selected.plan.targetKm <= 27);
   assert.equal(p.recovery.status, "supportive");
   assert.equal(p.history.ratedCoverage, 0);
   assert.equal(p.history.sessions.length, 6);
@@ -159,7 +163,7 @@ test("an incomplete week repeats the saved stage instead of inventing progressio
   const f = fixture(t);
   f.db.prepare("DELETE FROM activities WHERE started_at>=?").run("2026-11-02");
   const p = weeklyPlanning(f.db, now);
-  assert.equal(p.selected.plan.weekNumber, 1);
+  assert.equal(p.selected.plan.weekNumber, 2);
   assert(p.selected.plan.targetKm <= 25);
   assert.equal(
     p.selected.plan.workouts.some((w) => w.dayOffset === 6),
@@ -173,7 +177,7 @@ test("missing recovery sensors permit approval of a steady week without daily re
   const p = weeklyPlanning(f.db, now);
   assert.equal(p.recovery.status, "unknown");
   assert.equal(p.selected.plan.weekNumber, 2);
-  assert.equal(p.selected.plan.targetKm, 25);
+  assert.equal(p.selected.plan.targetKm, 27);
   assert.equal(acceptPreparedWeek(f.db, p.token, now).saved, true);
 });
 
@@ -388,7 +392,7 @@ test("an old stage is remembered after a gap but its old peak is not automatical
   f.repo.savePlan(createTrainingPlan(20, "2026-10-05"), now);
   f.db.prepare("DELETE FROM activities WHERE started_at>='2026-10-26'").run();
   const p = weeklyPlanning(f.db, now);
-  assert.equal(p.selected.plan.weekNumber, 20);
+  assert.equal(p.selected.plan.weekNumber, 25);
   assert.equal(p.selected.plan.targetKm, 20);
 });
 
@@ -453,19 +457,19 @@ test("routine Hyrox and cycling do not authorize AI consolidation of a supported
   assert.equal(p.selectionPolicy.supportingWorkload.increased, false);
   assert(Math.abs(p.selectionPolicy.supportingWorkload.change ?? 1) < 0.001);
   assert.equal(p.selectionPolicy.reductionEvidence.length, 0);
-  assert.equal(p.selected.plan.targetKm, 26.3);
+  assert.equal(p.selected.plan.targetKm, 27);
   // A plausible narrative and an invented concern cannot override the evidence.
   assert.equal(
     await worker(f.db, "consolidate", () => {}, "supporting_increase").tick(),
     "failed",
   );
   const after = weeklyPlanning(f.db, now);
-  assert.equal(after.selected.plan.targetKm, 26.3);
+  assert.equal(after.selected.plan.targetKm, 27);
   assert.equal(after.source, "local");
   assert.equal(acceptPreparedWeek(f.db, after.token, now).saved, true);
 });
 
-test("a genuine increase in supporting work remains a valid reason for consolidation", async (t) => {
+test("supporting-workload growth is context for scaling support, not an automatic running hold", async (t) => {
   const f = fixture(t);
   f.db
     .prepare(
@@ -476,16 +480,16 @@ test("a genuine increase in supporting work remains a valid reason for consolida
   assert.equal(p.selectionPolicy.supportingWorkload.increased, true);
   assert.equal(p.selectionPolicy.supportingWorkload.change, 1);
   assert(
-    p.selectionPolicy.reductionEvidence.some(
+    !p.selectionPolicy.reductionEvidence.some(
       (e) => e.code === "supporting_increase",
     ),
   );
-  assert.equal(p.selected.plan.targetKm, 25);
+  assert.equal(p.selected.plan.targetKm, 27);
   assert.equal(
     await worker(f.db, "consolidate", () => {}, "supporting_increase").tick(),
-    "reviewed",
+    "failed",
   );
-  assert.equal(weeklyPlanning(f.db, now).source, "ai");
+  assert.equal(weeklyPlanning(f.db, now).source, "local");
 });
 
 for (const reason of [null, "supporting_increase", "local_recommendation"])
@@ -507,7 +511,7 @@ for (const reason of [null, "supporting_increase", "local_recommendation"])
     const before = f.db.serialize();
     const corrected = weeklyPlanning(f.db, now);
     assert.equal(corrected.aiStatus, "corrected");
-    assert.equal(corrected.selected.plan.targetKm, 26.3);
+    assert.equal(corrected.selected.plan.targetKm, 27);
     assert(!corrected.summary.includes("Hold at 25"));
     assert.deepEqual(f.db.serialize(), before);
     let calls = 0;
@@ -517,7 +521,7 @@ for (const reason of [null, "supporting_increase", "local_recommendation"])
     );
     assert.equal(calls, 0);
     assert.equal(acceptPreparedWeek(f.db, corrected.token, now).saved, true);
-    assert.equal(f.repo.plans().find((w) => w.start === start)?.targetKm, 26.3);
+    assert.equal(f.repo.plans().find((w) => w.start === start)?.targetKm, 27);
   });
 
 test("a verified recovery reduction remains available even when supporting volume is routine", async (t) => {
@@ -547,7 +551,7 @@ test("invalid cached JSON cannot break the weekly planner", (t) => {
         "INSERT OR REPLACE INTO weekly_planning(week_start,evidence_hash,review_json,attempted_at) VALUES(?,?,?,?)",
       )
       .run(start, p.evidenceHash, raw, now.toISOString());
-    assert.equal(weeklyPlanning(f.db, now).selected.plan.targetKm, 26.3);
+    assert.equal(weeklyPlanning(f.db, now).selected.plan.targetKm, 27);
     assert.equal(weeklyPlanning(f.db, now).aiStatus, "corrected");
   }
 });
@@ -576,4 +580,261 @@ test("an already accepted 25 km week is not replaced when its old AI selection i
   assert.equal(result.needsApproval, false);
   assert.equal(result.selected.plan.targetKm, 25);
   assert.deepEqual(f.db.serialize(), before);
+});
+
+test("Sunday audit prepares Stage 3 at 29 km for Monday and corrects a stale saved Stage 2 only on approval", (t) => {
+  const f = fixture(t),
+    sunday = new Date("2026-11-15T20:00:00Z"),
+    next = "2026-11-16";
+  f.repo.savePlan(createTrainingPlan(2, start, 375, 270, 26.3), now);
+  f.repo.savePlan(createTrainingPlan(2, next, 375, 270, 26.3), now);
+  for (const [day, km] of [
+    [0, 5],
+    [1, 6],
+    [3, 7],
+    [5, 9.36],
+  ])
+    f.activity(shiftDay(start, day), km);
+  f.db
+    .prepare("UPDATE sync_state SET last_completed_at=?")
+    .run(sunday.toISOString());
+  const history = f.repo.plans().filter((p) => p.start < next);
+  const before = f.db.serialize(),
+    p = weeklyPlanning(f.db, sunday, next);
+  assert.equal(weeklyPlanning(f.db, sunday).selected.plan.weekNumber, 2);
+  assert.deepEqual(p.correction, { savedStage: 2, expectedStage: 3 });
+  assert.equal(p.selected.plan.targetKm, 29);
+  assert(p.needsApproval);
+  assert.deepEqual(f.db.serialize(), before);
+  const result = acceptPreparedWeek(f.db, p.token, sunday, next);
+  assert.equal(result.plan.weekNumber, 3);
+  assert.equal(result.plan.targetKm, 29);
+  assert.deepEqual(
+    f.repo.plans().filter((p) => p.start < next),
+    history,
+  );
+  assert.equal(acceptPreparedWeek(f.db, p.token, sunday, next).saved, true);
+  assert.throws(
+    () => weeklyPlanning(f.db, sunday, "2026-11-23"),
+    /immediately/,
+  );
+});
+
+test("a training race does not freeze the next milestone, and its warm-up is outside the mileage budget", (t) => {
+  const f = fixture(t);
+  new CommitmentRepository(f.db).saveRace({
+    id: randomUUID(),
+    name: "Training 10k",
+    day: "2026-11-15",
+    startTime: null,
+    distanceKm: 10,
+    terrain: "road",
+    elevationGain: null,
+    expectedMinutes: 55,
+    priority: "training",
+    status: "planned",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  const p = weeklyPlanning(f.db, now);
+  assert.equal(p.selected.plan.weekNumber, 2);
+  assert.equal(p.selected.plan.targetKm, 27);
+  assert(
+    !p.selectionPolicy.reductionEvidence.some(
+      (e) => e.code === "calendar_restriction",
+    ),
+  );
+});
+
+test("optional Hyrox is reduced before a supported mileage increase and attendance changes wait for approval", (t) => {
+  const f = fixture(t);
+  f.schedule.saveWeek(start, {
+    ...structuredClone(DEFAULT_WEEK_PREFERENCES),
+    hyrox: { monday: "going", wednesday: "going", friday: "going" },
+  });
+  const before = f.db.serialize(),
+    p = weeklyPlanning(f.db, now);
+  assert.equal(p.selected.plan.targetKm, 27);
+  assert.equal(p.selected.preferences.hyrox.friday, "skipping");
+  assert.deepEqual(f.db.serialize(), before);
+  assert.equal(f.schedule.week(start).hyrox.friday, "going");
+  acceptPreparedWeek(f.db, p.token, now);
+  assert.equal(f.schedule.week(start).hyrox.friday, "skipping");
+});
+
+test("a post-race cutback keeps its milestone on legal days and the accepted arrangement survives the next day", (t) => {
+  const f = fixture(t),
+    date = new Date("2026-11-23T10:00:00Z");
+  f.repo.savePlan(createTrainingPlan(2, "2026-11-09", 375, 270, 27), now);
+  f.repo.savePlan(createTrainingPlan(3, "2026-11-16", 375, 270, 29), now);
+  new CommitmentRepository(f.db).saveRace({
+    id: randomUUID(),
+    name: "Training trail",
+    day: "2026-11-22",
+    startTime: null,
+    distanceKm: 18,
+    terrain: "trail",
+    elevationGain: 900,
+    expectedMinutes: 150,
+    priority: "training",
+    status: "planned",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  new CommitmentRepository(f.db).saveRace({
+    id: randomUUID(),
+    name: "Following goal 10k",
+    day: "2026-12-05",
+    startTime: null,
+    distanceKm: 10,
+    terrain: "road",
+    elevationGain: null,
+    expectedMinutes: 50,
+    priority: "goal",
+    status: "planned",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  f.activity("2026-11-16", 5);
+  f.activity("2026-11-17", 6);
+  f.activity("2026-11-22", 18);
+  f.db
+    .prepare("UPDATE sync_state SET last_completed_at=?")
+    .run(date.toISOString());
+  const p = weeklyPlanning(f.db, date);
+  assert.equal(p.selected.plan.weekNumber, 4);
+  assert.equal(p.selected.plan.targetKm, 23);
+  assert(p.selected.rebalanced);
+  assert.equal(calendarMileage(p.selected.calendar, 375).countedKm, 23);
+  assert.equal(p.selected.calendar.days[0].sessions.length, 0);
+  assert.equal(p.selected.calendar.days[1].sessions.length, 0);
+  assert.equal(p.selected.calendar.days[6].sessions.length, 0);
+  const days = p.selected.calendar.days
+    .filter((d) => d.sessions.some((s) => s.session.sport === "running"))
+    .map((d) => d.dayOffset);
+  assert.equal(days.length, 3);
+  assert(!days.some((i) => days.includes(i + 1) && days.includes(i + 2)));
+  const saved = acceptPreparedWeek(f.db, p.token, date).plan;
+  const later = trainingCalendar(
+    f.db,
+    saved,
+    new GarminRepository(f.db).allActivities(),
+    new Date("2026-11-25T10:00:00Z"),
+  );
+  assert.equal(calendarMileage(later, 375).countedKm, 23);
+  assert.deepEqual(
+    later.days
+      .filter((d) => d.sessions.some((s) => s.session.sport === "running"))
+      .map((d) => d.dayOffset),
+    days,
+  );
+  const edited = saveReviewedPlan(
+    f.db,
+    {
+      weekNumber: 4,
+      start: "2026-11-23",
+      easyPace: 375,
+      tempoPace: 270,
+      targetKm: 22,
+    },
+    date,
+  ).plan;
+  assert.equal(
+    calendarMileage(
+      trainingCalendar(
+        f.db,
+        edited,
+        new GarminRepository(f.db).allActivities(),
+        new Date("2026-11-25T10:00:00Z"),
+      ),
+      375,
+    ).countedKm,
+    22,
+  );
+});
+
+test("accepted goal-race preparation is not tapered repeatedly when replaying the calendar", (t) => {
+  const f = fixture(t);
+  new CommitmentRepository(f.db).saveRace({
+    id: randomUUID(),
+    name: "Goal 10k",
+    day: "2026-11-15",
+    startTime: null,
+    distanceKm: 10,
+    terrain: "road",
+    elevationGain: null,
+    expectedMinutes: 50,
+    priority: "goal",
+    status: "planned",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  const p = weeklyPlanning(f.db, now),
+    expected = calendarMileage(p.selected.calendar, 375);
+  const saved = acceptPreparedWeek(f.db, p.token, now).plan;
+  const calendar = trainingCalendar(
+    f.db,
+    saved,
+    new GarminRepository(f.db).allActivities(),
+    new Date("2026-11-10T10:00:00Z"),
+  );
+  assert.deepEqual(calendarMileage(calendar, 375), expected);
+});
+
+test("a stale legacy race week keeps its old per-run distance until the corrected milestone is accepted", (t) => {
+  const f = fixture(t),
+    sunday = new Date("2026-11-15T20:00:00Z"),
+    next = "2026-11-16";
+  f.repo.savePlan(createTrainingPlan(2, start, 375, 270, 26.3), now);
+  const old = createTrainingPlan(2, next, 375, 270, 26.3);
+  f.repo.savePlan(old, now);
+  for (const [day, km] of [
+    [0, 5],
+    [1, 6],
+    [3, 7],
+    [5, 9.36],
+  ])
+    f.activity(shiftDay(start, day), km);
+  f.db
+    .prepare("UPDATE sync_state SET last_completed_at=?")
+    .run(sunday.toISOString());
+  new CommitmentRepository(f.db).saveRace({
+    id: randomUUID(),
+    name: "Training trail",
+    day: "2026-11-22",
+    startTime: null,
+    distanceKm: 18,
+    terrain: "trail",
+    elevationGain: 900,
+    expectedMinutes: 150,
+    priority: "training",
+    status: "planned",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
+  const activities = new GarminRepository(f.db).allActivities();
+  const before = trainingCalendar(f.db, old, activities, sunday);
+  const monday = before.days[0].sessions.find(
+    (s) => s.session.sport === "running",
+  )!.session;
+  assert.ok(monday.sport === "running");
+  assert.equal(workoutKm(monday.workout, 375), 5);
+  const proposal = weeklyPlanning(f.db, sunday, next);
+  assert.equal(proposal.selected.plan.targetKm, 29);
+  assert.equal(calendarMileage(proposal.selected.calendar, 375).countedKm, 29);
+  assert.equal(f.repo.plans().find((p) => p.start === next)!.weekNumber, 2);
+  const saved = acceptPreparedWeek(f.db, proposal.token, sunday, next).plan;
+  assert.equal(saved.planningVersion, 2);
+  assert.equal(
+    calendarMileage(
+      trainingCalendar(
+        f.db,
+        saved,
+        activities,
+        new Date("2026-11-17T10:00:00Z"),
+      ),
+      375,
+    ).countedKm,
+    29,
+  );
 });

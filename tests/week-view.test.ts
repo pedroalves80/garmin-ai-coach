@@ -1,3 +1,4 @@
+import { milestoneForWeek, distributeMileage } from "../src/shared/milestones";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -19,7 +20,7 @@ import type { RaceEvent } from "../src/shared/types/commitments";
 const monday = "2026-11-09",
   today = "2026-11-10";
 const current = createTrainingPlan(2, monday, 375, 270, 26.3);
-const future = createTrainingPlan(2, "2026-11-16", 375, 270, 26.3);
+const future = createTrainingPlan(3, "2026-11-16", 375, 270, 26.3);
 const context = {
   monday,
   plans: [current, future],
@@ -49,17 +50,17 @@ test("browsing a saved future week preserves its stage, distance and exact custo
   const before = JSON.stringify(custom);
   const view = weekView(future.start, { ...context, plans: [current, custom] });
   assert.equal(view.kind, "reviewed");
-  assert.equal(view.plan.weekNumber, 2);
+  assert.equal(view.plan.weekNumber, 3);
   assert.equal(view.plan.targetKm, 26.3);
   assert.equal(JSON.stringify(view.plan), before);
   assert.equal(weekView(monday, context).plan, current);
 });
-test("unsaved future weeks are provisional and do not jump to a milestone ceiling or develop quality", () => {
+test("unsaved future weeks forecast milestone targets without developing quality", () => {
   const before = JSON.stringify(context);
   const view = weekView("2026-11-23", context);
   assert.equal(view.kind, "projection");
-  assert.equal(view.plan.weekNumber, 3);
-  assert.equal(view.plan.targetKm, 26.3);
+  assert.equal(view.plan.weekNumber, 4);
+  assert.equal(view.plan.targetKm, 23);
   assert.equal(view.plan.development?.qualityLevel, 0);
   assert(view.plan.workouts.every((w) => workoutKm(w, 375) >= 5));
   assert.equal(JSON.stringify(context), before);
@@ -186,4 +187,41 @@ test("invalid or out-of-range plan date links fall back to the current week", ()
   ])
     assert.equal(planDayFromQuery(raw, "2026-11-02", "2028-11-06"), undefined);
   assert.throws(() => planDayHref("not-a-date"));
+});
+
+test("calendar milestones forecast 25,27,29,23,30 without a repeated legacy stage moving the anchor", () => {
+  const first = createTrainingPlan(1, "2026-11-02"),
+    stale = createTrainingPlan(2, "2026-11-16", 375, 270, 26.3);
+  const ctx = { ...context, plans: [first, current, stale], prepared: current };
+  for (const [date, stage, km] of [
+    ["2026-11-02", 1, 25],
+    ["2026-11-09", 2, 27],
+    ["2026-11-16", 3, 29],
+    ["2026-11-23", 4, 23],
+    ["2026-11-30", 5, 30],
+  ] as const)
+    assert.deepEqual(milestoneForWeek(date, ctx.plans), {
+      stage,
+      km,
+      anchor: "2026-11-02",
+    });
+  const before = JSON.stringify(ctx.plans),
+    view = weekView(stale.start, ctx);
+  assert.equal(view.kind, "correction");
+  assert.equal(view.plan.weekNumber, 3);
+  assert.equal(view.plan.targetKm, 29);
+  assert.equal(JSON.stringify(ctx.plans), before);
+  const plan = createTrainingPlan(2, "2026-11-09");
+  assert.equal(
+    distributeMileage(createTrainingPlan(30, "2027-05-24"), 5),
+    null,
+    "A distant milestone cannot bypass current run-distance capacity",
+  );
+  const fitted = distributeMileage(plan, 8.14)!;
+  assert(fitted);
+  assert.equal(
+    fitted.workouts.reduce((n, w) => n + workoutKm(w, 375), 0),
+    27,
+  );
+  assert(fitted.workouts.every((w) => workoutKm(w, 375) <= 8.954 + 1e-8));
 });

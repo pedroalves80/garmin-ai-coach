@@ -1,3 +1,4 @@
+import { workoutMileageKm } from "../../shared/mileage";
 import { longRunTerrain } from "../../shared/trail-running";
 import { prepare } from "../db/statements";
 import { createHash, randomUUID } from "node:crypto";
@@ -108,7 +109,7 @@ function km(calendar: WeekSchedule, plan: TrainingPlan) {
         (sum, s) =>
           sum +
           (s.session.sport === "running"
-            ? workoutKm(s.session.workout, plan.easyPace)
+            ? workoutMileageKm(s.session.workout, plan.easyPace)
             : 0),
         0,
       ),
@@ -725,7 +726,7 @@ export class ScheduleEditingService {
                     (n, s) =>
                       n +
                       (s.session.sport === "running"
-                        ? workoutKm(s.session.workout, plan.easyPace)
+                        ? workoutMileageKm(s.session.workout, plan.easyPace)
                         : 0),
                     0,
                   ),
@@ -739,7 +740,7 @@ export class ScheduleEditingService {
                   (n, s) =>
                     n +
                     (s.session.sport === "running"
-                      ? workoutKm(s.session.workout, plan.easyPace)
+                      ? workoutMileageKm(s.session.workout, plan.easyPace)
                       : 0),
                   0,
                 ),

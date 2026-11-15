@@ -79,7 +79,10 @@ export function SessionCard({
           </p>
           {session.workout.race && (
             <p className="inline-notice small-text">
-              Fixed course: {session.workout.race.distanceKm} km ·{" "}
+              Counts towards mileage: {session.workout.race.distanceKm} km
+              course; race warm-up/cool-down are excluded from that target and
+              retained in physical load. Fixed course:{" "}
+              {session.workout.race.distanceKm} km ·{" "}
               {session.workout.race.terrain} · estimated{" "}
               {session.workout.race.expectedMinutes} min for the course. Warm-up
               and cool-down are separate. Race effort uses Garmin target “No

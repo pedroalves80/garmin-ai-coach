@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import type { DashboardData } from "@/server/dashboard/data";
+import { RaceMileage } from "./RaceMileage";
 import { SessionEffortLog } from "./SessionEffortLog";
 import { TrainingMetrics } from "./TrainingMetrics";
 import { ActivityHistory } from "./ActivityHistory";
@@ -16,6 +17,7 @@ export function ProgressWorkspace({
   return (
     <div className="screen-stack">
       <SessionEffortLog sessions={data.effortSessions} />
+      <RaceMileage data={data} />
       <div
         className="segmented-control"
         role="group"

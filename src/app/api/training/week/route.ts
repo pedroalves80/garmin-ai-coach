@@ -7,11 +7,25 @@ import { acceptPreparedWeek } from "@/server/coach/weekly";
 import { CoachError } from "@/server/coach/service";
 import { PlanSaveError } from "@/server/training/save-plan";
 import { ScheduleRuleError } from "@/shared/weekly-schedule";
-export async function GET() {
+export async function GET(request: Request) {
   await connection();
-  return NextResponse.json(weeklyPlanning(getDatabase()), {
-    headers: { "Cache-Control": "no-store" },
-  });
+  const value = new URL(request.url).searchParams.get("start");
+  if (value && !z.iso.date().safeParse(value).success)
+    return NextResponse.json(
+      { error: "Choose a valid Monday." },
+      { status: 400 },
+    );
+  try {
+    return NextResponse.json(
+      weeklyPlanning(getDatabase(), new Date(), value ?? undefined),
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch {
+    return NextResponse.json(
+      { error: "Review this week or the immediately following week." },
+      { status: 400 },
+    );
+  }
 }
 export async function POST(request: Request) {
   const denied = authorizeMutation(request);
@@ -21,12 +35,18 @@ export async function POST(request: Request) {
     if (Buffer.byteLength(text) > 512)
       return NextResponse.json({ error: "Request too large" }, { status: 413 });
     const input = z
-      .object({ token: z.string().regex(/^[a-f0-9]{64}$/) })
+      .object({
+        token: z.string().regex(/^[a-f0-9]{64}$/),
+        start: z.iso.date().optional(),
+      })
       .strict()
       .parse(JSON.parse(text));
-    return NextResponse.json(acceptPreparedWeek(getDatabase(), input.token), {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return NextResponse.json(
+      acceptPreparedWeek(getDatabase(), input.token, new Date(), input.start),
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   } catch (error) {
     return NextResponse.json(
       {

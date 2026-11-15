@@ -22,6 +22,9 @@ export function sameWorkout(a: RunWorkout, b: RunWorkout) {
       w.title,
       w.type,
       stepsIdentity(w.steps),
+      w.calendarAdjustment
+        ? [w.calendarAdjustment.raceId, w.calendarAdjustment.phase]
+        : null,
       w.trail
         ? [
             w.trail.expectedMinutes,

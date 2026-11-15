@@ -1,3 +1,4 @@
+import { countedActivityKm, raceExtraMeters } from "../../shared/mileage";
 import type {
   ActivityMeasurement,
   TrainingWeek,
@@ -47,6 +48,8 @@ export function weeklyMetrics(
       start,
       partial: i === 4,
       runningKm: 0,
+      totalRunningKm: 0,
+      raceExtraKm: 0,
       runningMinutes: 0,
       runs: 0,
       cyclingMinutes: 0,
@@ -63,7 +66,9 @@ export function weeklyMetrics(
       const group = sportGroup(item);
       if (group === "running") {
         const km = (item.distanceMeters ?? 0) / 1000;
-        week.runningKm += km;
+        week.runningKm += countedActivityKm(item);
+        week.totalRunningKm! += km;
+        week.raceExtraKm! += raceExtraMeters(item) / 1000;
         week.runningMinutes += minutes;
         week.runs++;
         week.longestKm = Math.max(week.longestKm, km);

@@ -1,3 +1,4 @@
+import { workoutMileageKm } from "./mileage";
 import type {
   Commitments,
   RaceEvent,
@@ -85,7 +86,7 @@ export function calendarGate(
     return {
       blocked: true,
       reason:
-        "A race preparation or recovery window is active. Hold mileage and quality progression.",
+        "Race preparation/recovery adjusts intensity and placement. Mileage follows its milestone unless recovery or calendar constraints require an exception.",
     };
   if (
     weekStart &&
@@ -99,7 +100,7 @@ export function calendarGate(
     return {
       blocked: true,
       reason:
-        "This week intersects race preparation or recovery. Hold normal mileage and quality progression.",
+        "This week intersects race preparation/recovery: keep quality controlled and review session placement; the mileage milestone is not automatically frozen.",
     };
   if (
     weekStart &&
@@ -230,6 +231,7 @@ export function applyCommitments(
     returnReady: boolean;
     approvedRestDays?: string[];
     longestRecentKm?: number;
+    allowMileageAllocation?: boolean;
     raceRecovery?: { stopRunning: boolean; reasons: string[] };
   },
 ): WeekSchedule {
@@ -509,20 +511,26 @@ export function applyCommitments(
             ...entry,
             session: {
               ...entry.session,
-              workout: recoveryRun(
-                w,
-                targets,
-                "Race preparation · recovery HR",
-                Math.max(
-                  5000,
-                  Math.floor(
-                    (workoutKm(w, plan.easyPace) *
-                      (before.priority === "training" ? 1000 : 750)) /
-                      10,
-                  ) * 10,
+              workout: {
+                ...recoveryRun(
+                  w,
+                  targets,
+                  "Race preparation · recovery HR",
+                  Math.max(
+                    5000,
+                    Math.floor(
+                      (workoutKm(w, plan.easyPace) *
+                        (before.priority === "training" ||
+                        w.calendarAdjustment?.raceId === before.id
+                          ? 1000
+                          : 750)) /
+                        10,
+                    ) * 10,
+                  ),
+                  true,
                 ),
-                true,
-              ),
+                calendarAdjustment: { raceId: before.id, phase: "preparation" },
+              },
             },
           },
         ];
@@ -532,7 +540,7 @@ export function applyCommitments(
       day.rule ??= {
         phase: "race_week",
         notes: [
-          "The event counts towards weekly distance, including warm-up/cool-down, and replaces the long run and quality. Retain other distances where the reviewed budget allows; do not add catch-up kilometres.",
+          "Race-course distance counts towards weekly mileage; race warm-up/cool-down remain in physical load outside the target. The event replaces the long run and quality. Retain other distances where the reviewed budget allows; do not add catch-up kilometres.",
         ],
       };
       day.sessions = day.sessions.flatMap<SessionState>((entry) => {
@@ -593,7 +601,7 @@ export function applyCommitments(
           (n, s) =>
             n +
             (s.session.sport === "running"
-              ? workoutKm(s.session.workout, plan.easyPace)
+              ? workoutMileageKm(s.session.workout, plan.easyPace)
               : 0),
           0,
         );
@@ -603,7 +611,7 @@ export function applyCommitments(
           (n, s) =>
             n +
             (s.session.sport === "running" && s.session.workout.race
-              ? workoutKm(s.session.workout, plan.easyPace)
+              ? workoutMileageKm(s.session.workout, plan.easyPace)
               : 0),
           0,
         ),
@@ -667,6 +675,74 @@ export function applyCommitments(
           ? "Only the excess distance is trimmed to fit the event inside the reviewed weekly budget. Running frequency is preserved."
           : "An ordinary run cannot fit the reviewed budget while keeping your 5 km minimum. It is removed rather than increasing weekly volume or adding catch-up distance.",
       );
+    }
+    const guardRemovedRunning = result.days.some(
+      (day, i) =>
+        day.rule &&
+        ["paused", "return_review", "return", "race_recovery"].includes(
+          day.rule.phase,
+        ) &&
+        calendar.days[i].sessions.some(
+          (s) => s.status === "planned" && s.session.sport === "running",
+        ) &&
+        day.sessions.filter(
+          (s) => s.status === "planned" && s.session.sport === "running",
+        ).length <
+          calendar.days[i].sessions.filter(
+            (s) => s.status === "planned" && s.session.sport === "running",
+          ).length,
+    );
+    if (
+      options.allowMileageAllocation !== false &&
+      raceKm > 0 &&
+      weekRaces.every((r) => r.priority === "training") &&
+      !guardRemovedRunning
+    ) {
+      let spare = Math.floor((plan.targetKm - total()) * 1000 + 1e-6);
+      const maxRun = Math.max(
+        5000,
+        ...plan.workouts.map((w) =>
+          Math.round(workoutKm(w, plan.easyPace) * 1000),
+        ),
+      );
+      for (const day of [...candidates].reverse()) {
+        if (spare <= 0) break;
+        if (
+          day.day < options.today ||
+          day.recorded.some((r) => r.sport === "running")
+        )
+          continue;
+        const entry = day.sessions.find(
+          (s) =>
+            s.status === "planned" &&
+            s.session.sport === "running" &&
+            !s.session.workout.race,
+        );
+        if (!entry || entry.session.sport !== "running") continue;
+        const run = entry.session,
+          meters = Math.round(workoutKm(run.workout, plan.easyPace) * 1000);
+        const max =
+          day.dayOffset < 5 && run.slot === "lunch"
+            ? Math.min(maxRun, Math.floor((7200 / plan.easyPace) * 1000))
+            : maxRun;
+        const add = Math.min(spare, Math.max(0, max - meters));
+        if (add <= 0) continue;
+        entry.session = {
+          ...run,
+          workout: recoveryRun(
+            run.workout,
+            targets,
+            "Base run · race-week mileage allocation",
+            meters + add,
+            true,
+          ),
+        };
+        spare -= add;
+        day.rule ??= { phase: "race_week", notes: [] };
+        day.rule.notes.push(
+          "Distance is allocated within this training-event week's reviewed mileage target. Race extras are separate; no rested or missed run is made up, and no run exceeds the base plan's longest distance.",
+        );
+      }
     }
     if (raceKm > plan.targetKm && plan.targetKm > 0)
       for (const day of result.days.filter((d) => d.race))

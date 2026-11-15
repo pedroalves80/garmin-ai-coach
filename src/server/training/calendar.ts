@@ -1,3 +1,4 @@
+import { countedActivityKm } from "../../shared/mileage";
 import { raceRecoveryEvidence } from "./race-recovery";
 import {
   applyAvailability,
@@ -112,7 +113,10 @@ export function trainingCalendar(
       day: calendarDate(new Date(a.startedAt)),
       sport: sportGroup(a),
       minutes: Math.round((a.durationSeconds ?? 0) / 60),
-      km: (a.distanceMeters ?? 0) / 1000,
+      km:
+        sportGroup(a) === "running"
+          ? countedActivityKm(a)
+          : (a.distanceMeters ?? 0) / 1000,
     }));
   const commitments = new CommitmentRepository(db);
   const rawCalendar = buildWeekSchedule(plan, week, profile, changes, records);
@@ -124,6 +128,7 @@ export function trainingCalendar(
     new AthleteRepository(db).profile().targets,
     {
       today: calendarDate(now),
+      allowMileageAllocation: plan.planningVersion === 2,
       returnReady: returnReady(db, now),
       raceRecovery: raceRecoveryEvidence(db, now),
       approvedRestDays: commitments.restDays(),

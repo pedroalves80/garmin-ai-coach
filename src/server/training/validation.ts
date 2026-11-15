@@ -68,6 +68,7 @@ const stepSchema: z.ZodType<PlanStep> = z.lazy(() =>
 );
 export const savedPlanSchema: z.ZodType<TrainingPlan> =
   planSettingsSchema.extend({
+    planningVersion: z.literal(2).optional(),
     targetKm: z.number().min(20).max(80),
     cutback: z.boolean(),
     development: z
@@ -100,6 +101,12 @@ export const savedPlanSchema: z.ZodType<TrainingPlan> =
             "race",
           ]),
           race: raceSchema.optional(),
+          calendarAdjustment: z
+            .object({
+              raceId: z.string().min(1).max(128),
+              phase: z.literal("preparation"),
+            })
+            .optional(),
           trail: z
             .object({
               expectedMinutes: z.number().int().min(15).max(1440),
