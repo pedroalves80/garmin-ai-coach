@@ -225,3 +225,41 @@ test("calendar milestones forecast 25,27,29,23,30 without a repeated legacy stag
   );
   assert(fitted.workouts.every((w) => workoutKm(w, 375) <= 8.954 + 1e-8));
 });
+
+test("redistributing a reduced recovery week never raises its running intensity", () => {
+  const base = createTrainingPlan(23, "2027-04-05", 375, 270, 60);
+  const recovery = {
+    ...base,
+    workouts: base.workouts.map((w) => ({
+      ...w,
+      type: "recovery" as const,
+      steps: [
+        {
+          kind: "step" as const,
+          name: "Run" as const,
+          amount: {
+            kind: "distance" as const,
+            meters: workoutKm(w, 375) * 1000,
+          },
+          target: { kind: "hr" as const, min: 125, max: 140 },
+        },
+      ],
+    })),
+  };
+  const fitted = distributeMileage(recovery, 12);
+  assert(fitted);
+  assert.equal(
+    fitted.workouts.reduce((n, w) => n + workoutKm(w, 375), 0),
+    60,
+  );
+  assert(
+    fitted.workouts.every(
+      (w) =>
+        w.type === "recovery" &&
+        w.steps.every(
+          (s) =>
+            s.kind === "step" && s.target.kind === "hr" && s.target.max <= 140,
+        ),
+    ),
+  );
+});

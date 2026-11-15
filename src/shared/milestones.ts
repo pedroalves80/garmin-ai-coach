@@ -66,8 +66,15 @@ export function distributeMileage(
       title:
         w.type === "long"
           ? "Long base run · distributed mileage"
-          : "Base run · distributed mileage",
-      type: w.type === "long" ? "long" : "base",
+          : w.type === "recovery"
+            ? "Recovery run · distributed mileage"
+            : "Base run · distributed mileage",
+      type:
+        w.type === "long"
+          ? "long"
+          : w.type === "recovery"
+            ? "recovery"
+            : "base",
       steps: [
         {
           kind: "step",
@@ -85,8 +92,18 @@ export function distributeMileage(
           amount: { kind: "distance", meters: meters - 1000 },
           target: {
             kind: "hr",
-            min: w.type === "long" ? targets.longMin : targets.baseMin,
-            max: w.type === "long" ? targets.longMax : targets.baseMax,
+            min:
+              w.type === "recovery"
+                ? targets.recoveryMin
+                : w.type === "long"
+                  ? targets.longMin
+                  : targets.baseMin,
+            max:
+              w.type === "recovery"
+                ? targets.recoveryMax
+                : w.type === "long"
+                  ? targets.longMax
+                  : targets.baseMax,
           },
         },
         {
