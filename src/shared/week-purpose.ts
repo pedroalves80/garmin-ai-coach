@@ -5,10 +5,10 @@ export function weekPurpose(calendar: WeekSchedule | null, cutback = false) {
     return "Training break / return review · recovery takes priority";
   if (phases.has("return"))
     return "Return to training · reviewed recovery baseline";
-  if (phases.has("race_recovery"))
-    return "Race recovery · intensity reduced first; initial rest and recovery evidence can lower distance";
   if (phases.has("race"))
     return "Race week · event included in the distance budget";
+  if (phases.has("race_recovery"))
+    return "Race recovery · intensity reduced first; initial rest and recovery evidence can lower distance";
   if (phases.has("taper") || phases.has("race_week"))
     return "Race preparation · training events retain distance; goal events taper";
   return cutback

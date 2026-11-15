@@ -701,6 +701,11 @@ test("training preparation preserves distance and trail effort whereas explicit 
     DEFAULT_TARGETS,
     { today: "2026-11-01", returnReady: false },
   );
+  assert.match(
+    weekPurpose(goal),
+    /^Race week/,
+    "A Saturday race stays a race week even with Sunday recovery",
+  );
   const target = thu(goal);
   assert.ok(target.sport === "running");
   assert(workoutKm(target.workout, 375) < workoutKm(training.workout, 375));
