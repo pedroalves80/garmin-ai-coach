@@ -1,3 +1,4 @@
+import { observeRaces } from "./race-observations";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
 import { calendarMileage, countedActivityKm } from "../../shared/mileage";
 import { milestoneForWeek, distributeMileage } from "../../shared/milestones";
@@ -115,7 +116,7 @@ export function weeklyPlanning(
   const health = healthEvidence(db, today),
     recovery = garminRecovery(health, today),
     commitmentsRepo = new CommitmentRepository(db),
-    commitments = commitmentsRepo.all(),
+    commitments = observeRaces(commitmentsRepo.all(), activities, now),
     preferences = schedule.preferences();
   const allSettings = schedule.weeks(),
     inheritedStart = Object.keys(allSettings)
@@ -672,7 +673,18 @@ export function weeklyPlanning(
     correction: correction
       ? { savedStage: savedCurrent!.weekNumber, expectedStage: stage }
       : undefined,
-    blockedReason,
+    blockedReason:
+      blockedReason ??
+      (selected.calendar.days.some(
+        (d) =>
+          d.race &&
+          d.rule?.phase === "race_recovery" &&
+          !d.sessions.some(
+            (s) => s.session.sport === "running" && s.session.workout.race,
+          ),
+      )
+        ? "Resolve overlapping race participation in Events before accepting this week."
+        : null),
     reference: reference
       ? {
           start: reference.start,

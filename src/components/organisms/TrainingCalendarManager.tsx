@@ -1,4 +1,5 @@
 "use client";
+import { RaceReviewControls } from "../molecules/RaceReviewControls";
 import { RacePaceCard } from "../molecules/RacePaceCard";
 import { raceImpactWeeks, compareRaceImpact } from "@/shared/race-impact";
 import { weekView, attendanceForWeek } from "@/shared/week-view";
@@ -676,6 +677,14 @@ export function TrainingCalendarManager({
                     : ""} · {r.priority} · {r.status}
                 </p>
               </div>
+              <RaceReviewControls
+                key={`${r.id}:${r.updatedAt}`}
+                race={r}
+                races={data.commitments.races}
+                today={data.today}
+                pending={pending}
+                onSave={(body) => void save(body)}
+              />
               {data.racePaceAdvice.find((a) => a.raceId === r.id) && (
                 <RacePaceCard
                   advice={data.racePaceAdvice.find((a) => a.raceId === r.id)!}

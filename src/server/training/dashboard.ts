@@ -1,3 +1,4 @@
+import { observeRaces } from "./race-observations";
 import {
   countedActivityKm,
   raceExtraMeters,
@@ -75,7 +76,7 @@ export function trainingDashboardData(
   const today = calendarDate(now),
     monday = mondayOf(today);
   const commitmentsRepo = new CommitmentRepository(sqlite),
-    commitments = commitmentsRepo.all();
+    commitments = observeRaces(commitmentsRepo.all(), activities, now);
   const currentPlan = plans.find((p) => p.start === monday) ?? null;
   const hasCommitments =
     commitments.races.some(

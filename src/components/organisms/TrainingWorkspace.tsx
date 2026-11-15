@@ -317,12 +317,11 @@ function TrainingWeekEditor({
       <Link href="/events" className="text-link plan-events-link">
         Races & training breaks →
       </Link>
-      {preview && (
+      {preview && calendar && (
         <RaceWeekNotice
-          start={start}
           races={data.commitments.races}
-          baseKm={planKm(preview)}
-          effectiveKm={effectiveKm}
+          plan={preview}
+          calendar={calendar}
         />
       )}
       {gate.blocked &&
@@ -433,7 +432,9 @@ function TrainingWeekEditor({
         </div>
         {calendar && preview && (
           <p className="muted small-text">
-            Mileage target excludes Hyrox and race warm-up/cool-down.{" "}
+            {volumeMilestones[preview.weekNumber - 1].toFixed(1)} km milestone →{" "}
+            {effectiveKm.toFixed(1)} km scheduled. Mileage target excludes Hyrox
+            and race warm-up/cool-down.{" "}
             {calendarMileage(calendar, preview.easyPace).totalKm.toFixed(1)} km
             total running, including{" "}
             {calendarMileage(calendar, preview.easyPace).raceExtrasKm.toFixed(

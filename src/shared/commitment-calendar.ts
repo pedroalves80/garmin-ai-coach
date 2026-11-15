@@ -1,3 +1,10 @@
+import {
+  activeRaceSchedule,
+  daysBetween,
+  raceWindow,
+  reviewedBaseReturn,
+} from "./race-policy";
+export { daysBetween, raceWindow } from "./race-policy";
 import { workoutMileageKm } from "./mileage";
 import type {
   Commitments,
@@ -13,11 +20,6 @@ import type {
 } from "./types/schedule";
 import { dayOffsetDate, validateDaySessions } from "./weekly-schedule";
 import { workoutKm } from "./training-plan";
-export function daysBetween(a: string, b: string) {
-  return Math.round(
-    (Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000,
-  );
-}
 export function pauseEnd(p: TrainingPause) {
   const resumed = p.resumeOn ? dayOffsetDate(p.resumeOn, -1) : null;
   return resumed && (!p.end || resumed < p.end) ? resumed : p.end;
@@ -33,17 +35,6 @@ export function pendingReturn(p: TrainingPause, day: string) {
     !pauseActive(p, day) &&
     (!p.returnReviewedAt || day < p.returnReviewedAt)
   );
-}
-export function raceWindow(r: RaceEvent) {
-  const demanding =
-    r.expectedMinutes >= 120 ||
-    r.distanceKm >= 21.1 ||
-    (r.elevationGain ?? 0) >= 500;
-  return {
-    lead: r.priority === "training" ? 2 : demanding ? 14 : 7,
-    recovery: r.distanceKm >= 42 ? 14 : demanding ? 7 : 3,
-    fullRest: r.distanceKm >= 42 ? 3 : demanding ? 2 : 1,
-  };
 }
 export function calendarGate(
   c: Commitments,
@@ -138,6 +129,7 @@ export function raceWorkout(
   r: RaceEvent,
   offset: number,
   targets: RunningTargets,
+  controlled = false,
 ): RunWorkout {
   return {
     dayOffset: offset,
@@ -159,11 +151,13 @@ export function raceWorkout(
         kind: "step",
         name: "Run",
         amount: { kind: "distance", meters: Math.round(r.distanceKm * 1000) },
-        target: {
-          kind: "effort",
-          min: r.priority === "goal" ? 7 : 6,
-          max: r.priority === "goal" ? 9 : 7,
-        },
+        target: controlled
+          ? { kind: "hr", min: targets.recoveryMin, max: targets.recoveryMax }
+          : {
+              kind: "effort",
+              min: r.priority === "goal" ? 7 : 6,
+              max: r.priority === "goal" ? 9 : 7,
+            },
       },
       {
         kind: "step",
@@ -259,6 +253,7 @@ export function applyCommitments(
     day: ScheduledDay,
     title: string,
     preserveDistance = false,
+    effort: "recovery" | "base" = "recovery",
   ) => {
     day.sessions = day.sessions.flatMap<SessionState>((entry) =>
       entry.status === "recorded"
@@ -280,6 +275,7 @@ export function applyCommitments(
                         )
                       : 5000,
                     preserveDistance,
+                    effort,
                   ),
                 },
               },
@@ -287,6 +283,23 @@ export function applyCommitments(
           : [],
     );
   };
+  const schedule = activeRaceSchedule(races, [
+    ...(options.approvedRestDays ?? []),
+    ...races
+      .filter(
+        (r) =>
+          r.participationReview &&
+          r.day <= options.today &&
+          options.raceRecovery?.reasons.length,
+      )
+      .map((r) => r.day),
+    ...races
+      .filter((r) =>
+        c.pauses.some((p) => pauseActive(p, r.day) || pendingReturn(p, r.day)),
+      )
+      .map((r) => r.day),
+  ]);
+  const activeRaces = schedule.active;
   // Precedence: break/return hold, fixed race, reduced return/recovery, then ordinary training.
   for (const day of result.days) {
     const pause = c.pauses.find((p) => pauseActive(p, day.day)),
@@ -322,11 +335,16 @@ export function applyCommitments(
         (!p.baselineReviewedAt ||
           daysBetween(day.day, p.baselineReviewedAt) < 7),
     );
-    const recoveryConflict = races.find(
-      (r) =>
-        r.day < day.day &&
-        daysBetween(day.day, r.day) <= raceWindow(r).recovery,
-    );
+    const overlap = race
+      ? schedule.conflicts.find((c) => c.race.id === race.id)
+      : undefined;
+    const recoveryConflict =
+      overlap &&
+      !overlap.controlled &&
+      !race?.recorded &&
+      race?.status !== "completed"
+        ? overlap.previous
+        : undefined;
     if (race && (returnConflict || recoveryConflict)) {
       day.race = race;
       day.sessions = keepHistory(day);
@@ -336,6 +354,23 @@ export function applyCommitments(
           returnConflict
             ? "This registered event overlaps an active return review. It remains visible but is not prescribed."
             : `This registered event is ${daysBetween(day.day, recoveryConflict!.day)} days after the ${recoveryConflict!.day} race, within its ${raceWindow(recoveryConflict!).recovery}-day recovery window. It remains visible but is not prescribed; review participation and race priorities.`,
+        ],
+      };
+      continue;
+    }
+    if (
+      race?.participationReview &&
+      race.day <= options.today &&
+      options.raceRecovery?.reasons.length &&
+      !race.recorded
+    ) {
+      day.race = race;
+      day.sessions = keepHistory(day);
+      day.rule = {
+        phase: "race_recovery",
+        notes: [
+          ...options.raceRecovery.reasons,
+          "Current recovery concerns withhold controlled participation. A prior participation choice does not override new symptoms or recovery flags.",
         ],
       };
       continue;
@@ -385,7 +420,12 @@ export function applyCommitments(
           session: {
             sport: "running",
             slot: "event",
-            workout: raceWorkout(race, day.dayOffset, targets),
+            workout: raceWorkout(
+              race,
+              day.dayOffset,
+              targets,
+              overlap?.controlled,
+            ),
           },
         },
       ];
@@ -395,6 +435,10 @@ export function applyCommitments(
       )
         day.warnings.push(
           "Review race distance, terrain and recent long-run preparation. Entering an event does not establish readiness or permission to increase training mileage.",
+        );
+      if (overlap?.controlled)
+        day.rule.notes.push(
+          "Controlled participation explicitly reviewed for this overlap. Use the recovery HR target for the course; no race-pace target or additional hard session.",
         );
       if (race.terrain === "trail")
         day.warnings.push(
@@ -458,15 +502,24 @@ export function applyCommitments(
         (s) => s.status === "recorded" || s.session.sport === "running",
       );
     }
-    const after = races.find(
-      (r) =>
-        daysBetween(day.day, r.day) > 0 &&
-        daysBetween(day.day, r.day) <= raceWindow(r).recovery,
-    );
+    const after = [...activeRaces]
+      .reverse()
+      .find(
+        (r) =>
+          daysBetween(day.day, r.day) > 0 &&
+          daysBetween(day.day, r.day) <= raceWindow(r).recovery,
+      );
     if (after) {
       day.rule = {
         phase: "race_recovery",
+        provisional: !after.recorded || day.day > options.today,
+        recoveryEffort: reviewedBaseReturn(after, day.day)
+          ? "base"
+          : "recovery",
         notes: [
+          !after.recorded
+            ? "Provisional recovery forecast from entered event details. Reassessed after a matching Garmin recording; daily check-ins are optional."
+            : `Recovery reassessed from ${after.recorded.minutes.toFixed(0)} recorded minutes and ${after.recorded.km.toFixed(1)} km, entered terrain/ascent and available recovery signals. Missing reports are unknown, not clearance.`,
           `After ${after.day}: remove supporting sessions and running intensity first. Retain prescribed distances after ${raceWindow(after).fullRest} initial rest day(s); the ${raceWindow(after).recovery}-day window restricts intensity, not every run to 5 km. Recovery remains provisional, not a clearance.`,
         ],
       };
@@ -479,7 +532,15 @@ export function applyCommitments(
         day.rule.notes.push(...options.raceRecovery.reasons);
         if (options.raceRecovery.stopRunning) day.sessions = keepHistory(day);
         else reduce(day, "Post-race recovery · reduced for recovery evidence");
-      } else if (after.distanceKm >= 42 || after.expectedMinutes >= 240) {
+      } else if (reviewedBaseReturn(after, day.day)) {
+        reduce(day, "Post-race return · reviewed base effort", true, "base");
+        day.rule.notes.push(
+          "One-time return-to-base review saved. Base running only; quality and secondary training stay reduced until the original recovery window ends.",
+        );
+      } else if (
+        after.distanceKm >= 42 ||
+        (after.recorded?.minutes ?? after.expectedMinutes) >= 240
+      ) {
         day.rule.notes.push(
           "Major-event safeguard: marathon distance or an estimated outing of at least four hours retains reduced-distance recovery. This planning threshold is a conservative app rule, not an individualized recovery prediction.",
         );
@@ -491,7 +552,7 @@ export function applyCommitments(
           !returning && !baselineReturn,
         );
     }
-    const before = races.find(
+    const before = activeRaces.find(
       (r) =>
         daysBetween(r.day, day.day) > 0 &&
         daysBetween(r.day, day.day) <= raceWindow(r).lead,
@@ -546,7 +607,11 @@ export function applyCommitments(
         ];
       });
     }
-    if (weekRaces.length && !returning && !after) {
+    if (
+      weekRaces.some((r) => activeRaces.some((a) => a.id === r.id)) &&
+      !returning &&
+      !after
+    ) {
       day.rule ??= {
         phase: "race_week",
         notes: [
@@ -604,7 +669,10 @@ export function applyCommitments(
     }
   }
   // Preserve history and course distance; remove ordinary prescriptions instead of adding catch-up mileage.
-  if (weekRaces.length) {
+  const prescribedWeekRaces = weekRaces.filter((r) =>
+    activeRaces.some((a) => a.id === r.id),
+  );
+  if (prescribedWeekRaces.length) {
     const total = () =>
       result.days
         .flatMap((d) => d.sessions)
@@ -639,10 +707,14 @@ export function applyCommitments(
       .sort(
         (a, b) =>
           Math.min(
-            ...weekRaces.map((r) => Math.abs(daysBetween(a.day, r.day))),
+            ...prescribedWeekRaces.map((r) =>
+              Math.abs(daysBetween(a.day, r.day)),
+            ),
           ) -
           Math.min(
-            ...weekRaces.map((r) => Math.abs(daysBetween(b.day, r.day))),
+            ...prescribedWeekRaces.map((r) =>
+              Math.abs(daysBetween(b.day, r.day)),
+            ),
           ),
       );
     for (const day of candidates) {
@@ -707,7 +779,7 @@ export function applyCommitments(
     if (
       options.allowMileageAllocation !== false &&
       raceKm > 0 &&
-      weekRaces.every((r) => r.priority === "training") &&
+      prescribedWeekRaces.every((r) => r.priority === "training") &&
       !guardRemovedRunning
     ) {
       let spare = Math.floor((plan.targetKm - total()) * 1000 + 1e-6);

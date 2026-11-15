@@ -1,76 +1,104 @@
 import Link from "next/link";
-import { raceWindow, daysBetween } from "@/shared/commitment-calendar";
+import { activeRaceSchedule, raceWindow } from "@/shared/race-policy";
 import { dayOffsetDate } from "@/shared/weekly-schedule";
-import { weekMonday } from "@/shared/week-view";
+import { weeklyMileageExplanation } from "@/shared/weekly-mileage-explanation";
 import type { RaceEvent } from "@/shared/types/commitments";
+import type { TrainingPlan } from "@/shared/types/metrics";
+import type { WeekSchedule } from "@/shared/types/schedule";
 export function RaceWeekNotice({
-  start,
   races,
-  baseKm,
-  effectiveKm,
+  plan,
+  calendar,
 }: {
-  start: string;
   races: RaceEvent[];
-  baseKm: number;
-  effectiveKm: number;
+  plan: TrainingPlan;
+  calendar: WeekSchedule;
 }) {
+  const summary = weeklyMileageExplanation(plan, calendar);
+  const schedule = activeRaceSchedule(races);
   const affected = races.filter(
     (r) =>
       r.status !== "cancelled" &&
-      start <= dayOffsetDate(r.day, raceWindow(r).recovery) &&
-      dayOffsetDate(start, 6) >=
-        (weekMonday(r.day) < dayOffsetDate(r.day, -raceWindow(r).lead)
-          ? weekMonday(r.day)
-          : dayOffsetDate(r.day, -raceWindow(r).lead)),
+      plan.start <= dayOffsetDate(r.day, raceWindow(r).recovery) &&
+      dayOffsetDate(plan.start, 6) >=
+        dayOffsetDate(r.day, -Math.max(6, raceWindow(r).lead)),
   );
-  if (!affected.length) return null;
+  if (
+    !affected.length &&
+    summary.shortfallKm < 0.05 &&
+    !summary.unresolved.length
+  )
+    return null;
   return (
     <aside
       className="surface race-week-notice"
-      aria-label="Race adjustments for this week"
+      aria-label="Weekly mileage and event adjustments"
     >
       <strong>
-        Race-adjusted calendar · {effectiveKm.toFixed(1)} km shown /{" "}
-        {baseKm.toFixed(1)} km baseline
+        {summary.milestoneKm.toFixed(1)} km milestone →{" "}
+        {summary.scheduledKm.toFixed(1)} km scheduled
       </strong>
-      {baseKm > 0 && effectiveKm < baseKm - 0.05 && (
+      {Math.abs(summary.baselineKm - summary.milestoneKm) > 0.05 && (
         <p className="small-text">
-          {((1 - effectiveKm / baseKm) * 100).toFixed(0)}% below the{" "}
-          {baseKm.toFixed(1)} km baseline. This is a calendar adjustment, not a
-          new fitness baseline. Initial rest, goal-race tapering, recovery
-          concerns or fitting a fixed course alongside the 5 km training-run
-          minimum can reduce the total.
+          Reviewed baseline: {summary.baselineKm.toFixed(1)} km before calendar
+          adjustments.
         </p>
       )}
-      {affected.map((r) => {
-        const window = raceWindow(r);
-        const prep = dayOffsetDate(r.day, -window.lead);
-        return (
-          <p key={r.id} className="small-text">
+      {summary.shortfallKm > 0.05 && (
+        <p className="small-text">
+          {summary.shortfallKm.toFixed(1)} km below the reviewed baseline. The
+          changes below explain the calendar difference; this does not establish
+          a lower fitness baseline.
+        </p>
+      )}
+      {!!summary.unresolved.length && (
+        <p className="small-text">
+          <strong>Participation unresolved.</strong>{" "}
+          {summary.unresolved.map((d) => d.day).join(", ")}: registered event
+          withheld. Its course is excluded and it adds no recovery days unless a
+          matching recording later confirms it happened. Resolve participation
+          in Events before accepting this week.
+        </p>
+      )}
+      {summary.provisionalRecovery && (
+        <p className="small-text">
+          <strong>Provisional recovery forecast.</strong> The app reassesses
+          after a matching Garmin recording, using recorded duration/distance,
+          entered terrain/ascent and available recovery signals. Missing daily
+          check-ins do not lock the forecast. A one-time return-to-base review
+          is available in Events after initial rest.
+        </p>
+      )}
+      <details>
+        <summary>Why these kilometres and targets?</summary>
+        {affected.map((r) => (
+          <p className="small-text" key={r.id}>
             <strong>{r.name}</strong> · {r.day} · {r.distanceKm} km {r.terrain}
             {r.elevationGain !== null ? ` · +${r.elevationGain} m` : ""}.{" "}
-            {r.priority === "goal" ? "Goal" : "Training"} race: {window.lead}
-            -day preparation window starts {prep}; recovery-effort window ends{" "}
-            {dayOffsetDate(r.day, window.recovery)}. Initial rest:{" "}
-            {window.fullRest} day(s).{" "}
-            {daysBetween(r.day, start) > 6
-              ? "Preparation can affect this week even though the race is later."
-              : "The event replaces ordinary training around race day."}
+            {schedule.active.some((a) => a.id === r.id)
+              ? `${r.recorded ? "Matched recording informs" : "Entered details forecast"} ${raceWindow(r).fullRest} initial rest day(s), then reduced intensity through ${dayOffsetDate(r.day, raceWindow(r).recovery)}. ${r.recoveryReview ? "A saved return review may restore base effort; quality stays reduced." : "Recovery targets are the athlete’s configured range, not a measured threshold."}`
+              : "Withheld: no additional recovery window is applied."}
           </p>
-        );
-      })}
-      <p className="muted small-text">
-        Race-course kilometres count towards the mileage target; race
-        warm-up/cool-down stay in total running and physical load. Hyrox never
-        contributes running mileage. The baseline plan and recorded activities
-        are retained. The calendar reduces intensity and nearby supporting
-        sessions first. Recovery runs retain their distances after initial rest
-        unless recovery evidence calls for less; there is no blanket 5 km
-        post-race cap. Removed distance is not automatically made up. Review the
-        dates and race priority in Races & training breaks.
-      </p>
+        ))}
+        {summary.changes.map((c) => (
+          <p className="small-text" key={c.day}>
+            <strong>
+              {c.day}: {c.beforeKm.toFixed(2)} → {c.afterKm.toFixed(2)} km.
+            </strong>{" "}
+            {c.reason}
+          </p>
+        ))}
+        <p className="muted small-text">
+          Calendar changes include moved or resized runs and race replacements;
+          the net difference determines the weekly total. Hyrox and race
+          warm-up/cool-down are excluded from milestone mileage. Running takes
+          priority over supporting sessions; initial rest, availability,
+          distance limits and explicit goal tapers still apply. Missed
+          kilometres are never packed into a partial week.
+        </p>
+      </details>
       <Link href="/events" className="text-link">
-        Manage races & training breaks →
+        Review races & recovery →
       </Link>
     </aside>
   );

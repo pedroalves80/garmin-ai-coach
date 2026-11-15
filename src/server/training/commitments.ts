@@ -1,3 +1,10 @@
+import { observeRaces } from "./race-observations";
+import {
+  activeRaceSchedule,
+  raceRevision,
+  raceWindow,
+} from "../../shared/race-policy";
+import { raceRecoveryEvidence } from "./race-recovery";
 import { AthleteRepository } from "./athlete-repository";
 import { createTrainingPlan } from "../../shared/training-plan";
 import { mondayOf } from "./dates";
@@ -30,6 +37,25 @@ export const commitmentInput = z.union([
     })
     .strict(),
   z.object({ action: z.literal("pause"), pause: pauseFields }).strict(),
+  z
+    .object({
+      action: z.literal("review_race_participation"),
+      id: z.uuid(),
+      previousId: z.uuid(),
+      revision: z.string().max(512),
+      previousRevision: z.string().max(512),
+      confirmed: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("review_race_recovery"),
+      id: z.uuid(),
+      revision: z.string().max(512),
+      activityId: z.string().max(100),
+      confirmed: z.literal(true),
+    })
+    .strict(),
   idAction("cancel_race"),
   idAction("complete_race"),
   idAction("cancel_pause"),
@@ -66,7 +92,11 @@ export function updateCommitment(
     stamp = now.toISOString();
   return db
     .transaction(() => {
-      const c = repo.all();
+      const c = observeRaces(
+        repo.all(),
+        new GarminRepository(db).allActivities(),
+        now,
+      );
       if (v.action === "race") {
         if (v.race.day < today || daysBetween(v.race.day, today) > 730)
           throw new CommitmentError(
@@ -93,6 +123,105 @@ export function updateCommitment(
           createdAt: old?.createdAt ?? stamp,
           updatedAt: stamp,
         });
+      } else if (
+        v.action === "review_race_participation" ||
+        v.action === "review_race_recovery"
+      ) {
+        const r = c.races.find(
+          (r) => r.id === v.id && r.status !== "cancelled",
+        );
+        if (!r || raceRevision(r) !== v.revision)
+          throw new CommitmentError(
+            "Event changed. Refresh and review its current details.",
+          );
+        if (
+          c.pauses.some(
+            (p) =>
+              pauseActive(p, r.day) ||
+              pendingReturn(p, r.day) ||
+              pauseActive(p, today) ||
+              pendingReturn(p, today),
+          )
+        )
+          throw new CommitmentError(
+            "A training break or return review takes priority.",
+          );
+        if (v.action === "review_race_participation") {
+          const conflict = activeRaceSchedule(c.races).conflicts.find(
+            (c) => c.race.id === r.id,
+          );
+          const previous = conflict?.previous;
+          if (
+            !previous ||
+            previous.id !== v.previousId ||
+            raceRevision(previous) !== v.previousRevision ||
+            r.day < today ||
+            r.status !== "planned" ||
+            r.priority !== "training"
+          )
+            throw new CommitmentError(
+              "Refresh the overlap; only an upcoming training event can be reviewed for controlled participation.",
+            );
+          if (
+            raceWindow(previous).recovery > 3 ||
+            raceWindow(r).recovery > 3 ||
+            daysBetween(r.day, previous.day) <= raceWindow(previous).fullRest
+          )
+            throw new CommitmentError(
+              "Initial rest and demanding-event recovery cannot be overridden here. Review the event dates or participation instead.",
+            );
+          if (r.day === today && raceRecoveryEvidence(db, now).reasons.length)
+            throw new CommitmentError(
+              "Current recovery concerns withhold controlled participation.",
+            );
+          repo.saveRace({
+            ...r,
+            participationReview: {
+              previousId: previous.id,
+              previousRevision: raceRevision(previous),
+              revision: raceRevision(r),
+              reviewedAt: stamp,
+            },
+            updatedAt: stamp,
+          });
+        } else {
+          const sync = new GarminRepository(db).status()?.lastCompletedAt;
+          if (
+            !r.recorded ||
+            r.recorded.activityId !== v.activityId ||
+            !sync ||
+            Date.parse(sync) > now.getTime() ||
+            now.getTime() - Date.parse(sync) > 2 * 86400000
+          )
+            throw new CommitmentError(
+              "Sync a matching race recording before reviewing your return to base running.",
+            );
+          const elapsed = daysBetween(today, r.day);
+          if (
+            elapsed <= raceWindow(r).fullRest ||
+            elapsed > raceWindow(r).recovery ||
+            r.distanceKm >= 42 ||
+            r.recorded.minutes >= 240
+          )
+            throw new CommitmentError(
+              "This review is available after initial rest within an ordinary event's recovery window. Major events retain their recovery safeguards.",
+            );
+          if (raceRecoveryEvidence(db, now).reasons.length)
+            throw new CommitmentError(
+              "Current recovery concerns need review before returning to base running.",
+            );
+          repo.saveRace({
+            ...r,
+            recoveryReview: {
+              revision: raceRevision(r),
+              from: today,
+              reviewedAt: stamp,
+              activityId: r.recorded.activityId,
+              recordingRevision: JSON.stringify(r.recorded),
+            },
+            updatedAt: stamp,
+          });
+        }
       } else if (v.action === "pause") {
         if (
           v.pause.start < today ||

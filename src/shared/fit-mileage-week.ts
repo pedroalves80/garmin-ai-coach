@@ -8,6 +8,7 @@ import {
   volumeMilestones,
   workoutKm,
 } from "./training-plan";
+import { activeRaceSchedule } from "./race-policy";
 import { daysBetween, raceWindow } from "./commitment-calendar";
 import { validateDaySessions } from "./weekly-schedule";
 
@@ -19,6 +20,7 @@ export function fitMileageWeek(
   options: {
     today: string;
     longestRecentKm?: number;
+    approvedRestDays?: string[];
     raceRecovery?: { stopRunning: boolean; reasons: string[] };
   },
 ) {
@@ -48,21 +50,25 @@ export function fitMileageWeek(
     )
   )
     return unchanged;
-  const races = commitments.races.filter((r) => r.status !== "cancelled");
+  const races = activeRaceSchedule(commitments.races, [
+    ...(options.approvedRestDays ?? []),
+    ...calendar.days
+      .filter(
+        (d) =>
+          d.race &&
+          !d.sessions.some(
+            (s) => s.session.sport === "running" && s.session.workout.race,
+          ),
+      )
+      .map((d) => d.day),
+  ]).active;
   if (
     calendar.days.some(
       (d) =>
-        d.race &&
-        !d.sessions.some(
-          (s) => s.session.sport === "running" && s.session.workout.race,
-        ),
-    )
-  )
-    return unchanged;
-  if (
-    calendar.days.some(
-      (d) =>
-        d.race?.priority === "goal" ||
+        (d.race?.priority === "goal" &&
+          d.sessions.some(
+            (s) => s.session.sport === "running" && !!s.session.workout.race,
+          )) ||
         (d.rule?.phase === "taper" &&
           races.some(
             (r) =>
@@ -124,6 +130,7 @@ export function fitMileageWeek(
   const eligible = calendar.days.filter(
     (d) =>
       d.dayOffset < 6 &&
+      !options.approvedRestDays?.includes(d.day) &&
       !locked.includes(d.dayOffset) &&
       !d.race &&
       !d.recorded.some((r) => r.sport === "running") &&
@@ -198,7 +205,9 @@ export function fitMileageWeek(
       // Redistribution must not spread one day's post-race restriction across the week.
       // Unrestricted event-week runs stay aerobic; recovery days retain their lower target.
       const recovery =
-        day.rule?.phase === "race_recovery" || prior?.type === "recovery";
+        (day.rule?.phase === "race_recovery" &&
+          day.rule.recoveryEffort !== "base") ||
+        prior?.type === "recovery";
       const workout: RunWorkout = {
         dayOffset: day.dayOffset,
         title: recovery

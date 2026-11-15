@@ -11,6 +11,20 @@ export type RaceEvent = {
   status: "planned" | "completed" | "cancelled";
   createdAt: string;
   updatedAt: string;
+  participationReview?: {
+    previousId: string;
+    previousRevision: string;
+    revision: string;
+    reviewedAt: string;
+  };
+  recoveryReview?: {
+    revision: string;
+    from: string;
+    reviewedAt: string;
+    activityId: string;
+    recordingRevision: string;
+  };
+  recorded?: { activityId: string; km: number; minutes: number };
 };
 export type TrainingPause = {
   id: string;
@@ -35,4 +49,6 @@ export type CalendarRule = {
     | "race_recovery"
     | "race_week";
   notes: string[];
+  provisional?: boolean;
+  recoveryEffort?: "recovery" | "base";
 };

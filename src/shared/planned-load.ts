@@ -10,9 +10,15 @@ export function plannedEffort(session: TrainingSession) {
         ? 2
         : 3
       : session.workout.type === "race"
-        ? session.workout.race?.priority === "goal"
-          ? 8
-          : 6
+        ? session.workout.race?.participationReview &&
+          session.workout.steps.some(
+            (s) =>
+              s.kind === "step" && s.name === "Run" && s.target.kind === "hr",
+          )
+          ? 3
+          : session.workout.race?.priority === "goal"
+            ? 8
+            : 6
         : session.workout.trail
           ? session.workout.type === "recovery"
             ? 3
@@ -30,7 +36,19 @@ export function plannedMinutes(session: TrainingSession, plan: TrainingPlan) {
     : session.sport === "cycling"
       ? cyclingMinutes(session.workout)
       : session.workout.race
-        ? session.workout.race.expectedMinutes + (1.5 * plan.easyPace) / 60
+        ? Math.max(
+            session.workout.race.expectedMinutes,
+            session.workout.race.participationReview &&
+              session.workout.steps.some(
+                (s) =>
+                  s.kind === "step" &&
+                  s.name === "Run" &&
+                  s.target.kind === "hr",
+              )
+              ? (session.workout.race.distanceKm * plan.easyPace) / 60
+              : 0,
+          ) +
+          (1.5 * plan.easyPace) / 60
         : (session.workout.trail?.expectedMinutes ??
           session.workout.steps.reduce(
             (n, s) => n + stepSeconds(s, plan.easyPace),

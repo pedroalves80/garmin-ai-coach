@@ -1,3 +1,4 @@
+import { observeRaces } from "../training/race-observations";
 import { racePacingData } from "../training/race-pacing";
 import { racePacingContext } from "../../shared/race-pacing";
 import { prepare } from "../db/statements";
@@ -39,6 +40,16 @@ function raceSummary(r: import("../../shared/types/commitments").RaceEvent) {
     expectedMinutes: r.expectedMinutes,
     priority: r.priority,
     status: r.status,
+    ...(r.recorded
+      ? { recordedKm: r.recorded.km, recordedMinutes: r.recorded.minutes }
+      : {}),
+    ...(r.participationReview
+      ? {
+          participationReview:
+            "controlled; follow prescribed recovery HR if valid",
+        }
+      : {}),
+    ...(r.recoveryReview ? { baseReviewFrom: r.recoveryReview.from } : {}),
   };
 }
 export function coachContext(sqlite: Database.Database, now: Date) {
@@ -54,7 +65,11 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const checkIns = training
     .checkIns()
     .filter((c) => c.day <= day && c.day >= shiftDay(day, -6));
-  const commitments = new CommitmentRepository(sqlite).all();
+  const commitments = observeRaces(
+    new CommitmentRepository(sqlite).all(),
+    activities,
+    now,
+  );
   const plan =
     plans.find((p) => p.start === monday) ??
     (commitments.races.some(

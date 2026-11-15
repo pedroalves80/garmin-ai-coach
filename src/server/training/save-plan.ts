@@ -150,6 +150,19 @@ export function saveReviewedPlan(
       data.commitments,
       data.calendarOptions,
     ).calendar;
+  if (
+    selectedCalendar.days.some(
+      (d) =>
+        d.race &&
+        d.rule?.phase === "race_recovery" &&
+        !d.sessions.some(
+          (s) => s.session.sport === "running" && s.session.workout.race,
+        ),
+    )
+  )
+    throw new PlanSaveError(
+      "Resolve the overlapping race participation in Events before accepting this week.",
+    );
   const proposedReview = reviewPlannedWeek(selectedCalendar, plan, data.load);
   const oldTargets = previous?.development?.targets;
   const newTargets = plan.development?.targets;

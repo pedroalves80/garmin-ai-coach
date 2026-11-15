@@ -1,3 +1,4 @@
+import { observeRaces } from "./race-observations";
 import { countedActivityKm } from "../../shared/mileage";
 import { raceRecoveryEvidence } from "./race-recovery";
 import {
@@ -124,7 +125,7 @@ export function trainingCalendar(
   const committed = applyCommitments(
     rawCalendar,
     plan,
-    commitments.all(),
+    observeRaces(commitments.all(), activities, now),
     new AthleteRepository(db).profile().targets,
     {
       today: calendarDate(now),

@@ -1,3 +1,4 @@
+import { activeRaceSchedule } from "./race-policy";
 import type { RaceEvent } from "./types/commitments";
 import type { RacePaceEvidence, RacePaceAdvice } from "./types/race-pacing";
 import { daysBetween, raceWindow } from "./commitment-calendar";
@@ -20,12 +21,11 @@ export function racePacing(
     range: null,
     notes: [],
   };
-  const conflict = races.find(
-    (r) =>
-      r.status !== "cancelled" &&
-      r.day < race.day &&
-      daysBetween(race.day, r.day) <= raceWindow(r).recovery,
+  const overlap = activeRaceSchedule(races).conflicts.find(
+    (c) => c.race.id === race.id,
   );
+  const conflict =
+    overlap && !overlap.controlled ? overlap.previous : undefined;
   if (race.terrain === "trail")
     return {
       ...advice,
@@ -94,6 +94,16 @@ export function racePacing(
     advice.range = null;
     advice.notes.unshift(
       "Training race: keep the prescribed controlled effort (RPE 6–7); the performance estimate is not an instruction to race all-out.",
+    );
+  }
+  if (overlap?.controlled) {
+    advice.status = "training";
+    advice.range = null;
+    advice.notes.unshift(
+      "Reviewed controlled participation during recovery: follow the workout's recovery HR target, not race pace or the usual training-event RPE 6–7. Reassess closer to the event.",
+    );
+    advice.notes = advice.notes.filter(
+      (n) => !n.startsWith("Training race: keep"),
     );
   }
   if (conflict) {

@@ -26,6 +26,30 @@ export const raceSchema = raceFields.extend({
   status: z.enum(["planned", "completed", "cancelled"]),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  participationReview: z
+    .object({
+      previousId: z.uuid(),
+      previousRevision: z.string().max(512),
+      revision: z.string().max(512),
+      reviewedAt: z.iso.datetime(),
+    })
+    .optional(),
+  recoveryReview: z
+    .object({
+      revision: z.string().max(512),
+      from: z.iso.date(),
+      reviewedAt: z.iso.datetime(),
+      activityId: z.string().max(100),
+      recordingRevision: z.string().max(512),
+    })
+    .optional(),
+  recorded: z
+    .object({
+      activityId: z.string().max(100),
+      km: z.number().positive(),
+      minutes: z.number().positive(),
+    })
+    .optional(),
 });
 export const pauseFields = z
   .object({
@@ -67,6 +91,8 @@ export class CommitmentRepository {
   }
   saveRace(race: RaceEvent) {
     const parsed = raceSchema.parse(race);
+    // Observations are derived from Garmin on read, never stored as race inputs.
+    delete parsed.recorded;
     prepare(
       this.db,
       "INSERT INTO race_events(id,day,item_json) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,item_json=excluded.item_json",
