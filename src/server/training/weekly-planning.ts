@@ -1,3 +1,4 @@
+import { raceRecoveryEvidence } from "./race-recovery";
 import { racePacingData } from "./race-pacing";
 import {
   weeklyOutput,
@@ -335,6 +336,7 @@ export function weeklyPlanning(
         {
           today,
           returnReady: returnReady(db, now),
+          raceRecovery: raceRecoveryEvidence(db, now),
           approvedRestDays: commitmentsRepo.restDays(),
           longestRecentKm: longest,
         },

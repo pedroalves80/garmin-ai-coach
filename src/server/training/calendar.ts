@@ -1,3 +1,4 @@
+import { raceRecoveryEvidence } from "./race-recovery";
 import {
   applyAvailability,
   relocatedSession,
@@ -124,6 +125,7 @@ export function trainingCalendar(
     {
       today: calendarDate(now),
       returnReady: returnReady(db, now),
+      raceRecovery: raceRecoveryEvidence(db, now),
       approvedRestDays: commitments.restDays(),
       longestRecentKm: Math.max(
         0,

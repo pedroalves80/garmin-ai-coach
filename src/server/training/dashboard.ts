@@ -1,3 +1,4 @@
+import { raceRecoveryEvidence } from "./race-recovery";
 import { RacePacingRepository } from "./race-pacing-repository";
 import type Database from "better-sqlite3";
 import { weeklyPlanning, healthEvidence } from "./weekly-planning";
@@ -174,6 +175,7 @@ export function trainingDashboardData(
     calendarOptions: {
       today,
       returnReady: returnReady(sqlite, now),
+      raceRecovery: raceRecoveryEvidence(sqlite, now),
       approvedRestDays: commitmentsRepo.restDays(),
       longestRecentKm: Math.max(
         0,

@@ -35,7 +35,7 @@ export function pendingReturn(p: TrainingPause, day: string) {
 }
 export function raceWindow(r: RaceEvent) {
   const demanding =
-    r.terrain === "trail" ||
+    r.expectedMinutes >= 120 ||
     r.distanceKm >= 21.1 ||
     (r.elevationGain ?? 0) >= 500;
   return {
@@ -182,21 +182,40 @@ function recoveryRun(
   targets: RunningTargets,
   title: string,
   meters = 5000,
+  preserveTrail = false,
 ): RunWorkout {
   return {
     dayOffset: w.dayOffset,
     title,
     type: "recovery",
+    ...(preserveTrail && w.trail
+      ? {
+          trail: {
+            expectedMinutes: Math.max(
+              15,
+              Math.round(
+                (w.trail.expectedMinutes * meters) / (workoutKm(w, 375) * 1000),
+              ),
+            ),
+            ...(w.trail.ascentM !== undefined
+              ? { ascentM: w.trail.ascentM }
+              : {}),
+          },
+        }
+      : {}),
     steps: [
       {
         kind: "step",
         name: "Run",
         amount: { kind: "distance", meters },
-        target: {
-          kind: "hr",
-          min: targets.recoveryMin,
-          max: targets.recoveryMax,
-        },
+        target:
+          preserveTrail && w.trail
+            ? { kind: "effort", min: 2, max: 3 }
+            : {
+                kind: "hr",
+                min: targets.recoveryMin,
+                max: targets.recoveryMax,
+              },
       },
     ],
   };
@@ -211,6 +230,7 @@ export function applyCommitments(
     returnReady: boolean;
     approvedRestDays?: string[];
     longestRecentKm?: number;
+    raceRecovery?: { stopRunning: boolean; reasons: string[] };
   },
 ): WeekSchedule {
   const races = c.races.filter((r) => r.status !== "cancelled"),
@@ -226,7 +246,11 @@ export function applyCommitments(
   };
   const keepHistory = (day: ScheduledDay) =>
     day.sessions.filter((s) => s.status === "recorded");
-  const reduce = (day: ScheduledDay, title: string) => {
+  const reduce = (
+    day: ScheduledDay,
+    title: string,
+    preserveDistance = false,
+  ) => {
     day.sessions = day.sessions.flatMap<SessionState>((entry) =>
       entry.status === "recorded"
         ? [entry]
@@ -236,7 +260,18 @@ export function applyCommitments(
                 ...entry,
                 session: {
                   ...entry.session,
-                  workout: recoveryRun(entry.session.workout, targets, title),
+                  workout: recoveryRun(
+                    entry.session.workout,
+                    targets,
+                    title,
+                    preserveDistance
+                      ? Math.round(
+                          workoutKm(entry.session.workout, plan.easyPace) *
+                            1000,
+                        )
+                      : 5000,
+                    preserveDistance,
+                  ),
                 },
               },
             ]
@@ -423,12 +458,29 @@ export function applyCommitments(
       day.rule = {
         phase: "race_recovery",
         notes: [
-          "Race recovery window: remove secondary training and quality. Recovery duration is a planning minimum; symptoms and check-ins take precedence.",
+          `After ${after.day}: remove supporting sessions and running intensity first. Retain prescribed distances after ${raceWindow(after).fullRest} initial rest day(s); the ${raceWindow(after).recovery}-day window restricts intensity, not every run to 5 km. Recovery remains provisional, not a clearance.`,
         ],
       };
       if (daysBetween(day.day, after.day) <= raceWindow(after).fullRest)
         day.sessions = keepHistory(day);
-      else reduce(day, "Post-race recovery · 5 km");
+      else if (
+        after.day <= options.today &&
+        options.raceRecovery?.reasons.length
+      ) {
+        day.rule.notes.push(...options.raceRecovery.reasons);
+        if (options.raceRecovery.stopRunning) day.sessions = keepHistory(day);
+        else reduce(day, "Post-race recovery · reduced for recovery evidence");
+      } else if (after.distanceKm >= 42 || after.expectedMinutes >= 240) {
+        day.rule.notes.push(
+          "Major-event safeguard: marathon distance or an estimated outing of at least four hours retains reduced-distance recovery. This planning threshold is a conservative app rule, not an individualized recovery prediction.",
+        );
+        reduce(day, "Post-race recovery · major-event distance reduction");
+      } else
+        reduce(
+          day,
+          "Post-race recovery · distance retained",
+          !returning && !baselineReturn,
+        );
     }
     const before = races.find(
       (r) =>
@@ -440,7 +492,9 @@ export function applyCommitments(
       day.rule = {
         phase: "taper",
         notes: [
-          "Reduce training around the event; do not make up removed mileage.",
+          before.priority === "training"
+            ? "Training event: retain ordinary run distances at recovery effort. The event replaces the long run and quality; remove nearby supporting sessions first."
+            : "Goal-race taper: reduce intensity and selected run distances deliberately to prioritize this event. No missed mileage is made up.",
         ],
       };
       day.sessions = day.sessions.flatMap<SessionState>((entry) => {
@@ -461,8 +515,13 @@ export function applyCommitments(
                 "Race preparation · recovery HR",
                 Math.max(
                   5000,
-                  Math.floor((workoutKm(w, plan.easyPace) * 750) / 10) * 10,
+                  Math.floor(
+                    (workoutKm(w, plan.easyPace) *
+                      (before.priority === "training" ? 1000 : 750)) /
+                      10,
+                  ) * 10,
                 ),
+                true,
               ),
             },
           },
@@ -473,7 +532,7 @@ export function applyCommitments(
       day.rule ??= {
         phase: "race_week",
         notes: [
-          "The race replaces this week's quality session and long run. Other mileage may be reduced.",
+          "The event counts towards weekly distance, including warm-up/cool-down, and replaces the long run and quality. Retain other distances where the reviewed budget allows; do not add catch-up kilometres.",
         ],
       };
       day.sessions = day.sessions.flatMap<SessionState>((entry) => {
@@ -489,7 +548,11 @@ export function applyCommitments(
                   workout: recoveryRun(
                     entry.session.workout,
                     targets,
-                    "Race-week base run",
+                    "Race-week base run · distance retained",
+                    Math.round(
+                      workoutKm(entry.session.workout, plan.easyPace) * 1000,
+                    ),
+                    true,
                   ),
                 },
               },
@@ -497,18 +560,17 @@ export function applyCommitments(
           : [entry];
       });
     }
-    if (
-      (returning || after) &&
-      day.day === options.today &&
-      !options.returnReady
-    ) {
+    if (returning && day.day === options.today && !options.returnReady) {
       day.sessions = keepHistory(day);
       day.warnings.push(
         "Log a current low-fatigue, pain-free check-in and sync before resuming running.",
       );
     }
     if (
-      (returning || after) &&
+      (returning ||
+        (after &&
+          after.day <= options.today &&
+          !!options.raceRecovery?.reasons.length)) &&
       day.sessions.some(
         (s) => s.status === "planned" && s.session.sport === "running",
       )
@@ -566,15 +628,44 @@ export function applyCommitments(
       );
     for (const day of candidates) {
       if (total() <= cap + 0.001) break;
-      day.sessions = day.sessions.filter(
+      const excess = Math.ceil((total() - cap) * 1000 - 1e-6);
+      const entry = day.sessions.find(
         (s) =>
-          s.status !== "planned" ||
-          s.session.sport !== "running" ||
-          !!s.session.workout.race,
-      );
+          s.status === "planned" &&
+          s.session.sport === "running" &&
+          !s.session.workout.race,
+      )!;
+      const run = entry.session;
+      const remainingMeters =
+        run.sport === "running"
+          ? Math.round(workoutKm(run.workout, plan.easyPace) * 1000) - excess
+          : 0;
+      if (run.sport === "running" && remainingMeters >= 5000) {
+        day.sessions = day.sessions.map((s) =>
+          s === entry
+            ? {
+                ...s,
+                session: {
+                  ...run,
+                  workout: recoveryRun(
+                    run.workout,
+                    targets,
+                    "Race-week base run · distance budget",
+                    remainingMeters,
+                    true,
+                  ),
+                },
+              }
+            : s,
+        );
+      } else {
+        day.sessions = day.sessions.filter((s) => s !== entry);
+      }
       day.rule ??= { phase: "race_week", notes: [] };
       day.rule.notes.push(
-        "Ordinary running removed to keep the race inside the weekly distance budget; no catch-up sessions.",
+        remainingMeters >= 5000
+          ? "Only the excess distance is trimmed to fit the event inside the reviewed weekly budget. Running frequency is preserved."
+          : "An ordinary run cannot fit the reviewed budget while keeping your 5 km minimum. It is removed rather than increasing weekly volume or adding catch-up distance.",
       );
     }
     if (raceKm > plan.targetKm && plan.targetKm > 0)

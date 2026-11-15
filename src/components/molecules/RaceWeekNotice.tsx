@@ -33,6 +33,15 @@ export function RaceWeekNotice({
         Race-adjusted calendar · {effectiveKm.toFixed(1)} km shown /{" "}
         {baseKm.toFixed(1)} km baseline
       </strong>
+      {baseKm > 0 && effectiveKm < baseKm - 0.05 && (
+        <p className="small-text">
+          {((1 - effectiveKm / baseKm) * 100).toFixed(0)}% below the{" "}
+          {baseKm.toFixed(1)} km baseline. This is a calendar adjustment, not a
+          new fitness baseline. Initial rest, goal-race tapering, recovery
+          concerns or fitting a fixed course alongside the 5 km training-run
+          minimum can reduce the total.
+        </p>
+      )}
       {affected.map((r) => {
         const window = raceWindow(r);
         const prep = dayOffsetDate(r.day, -window.lead);
@@ -41,8 +50,9 @@ export function RaceWeekNotice({
             <strong>{r.name}</strong> · {r.day} · {r.distanceKm} km {r.terrain}
             {r.elevationGain !== null ? ` · +${r.elevationGain} m` : ""}.{" "}
             {r.priority === "goal" ? "Goal" : "Training"} race: {window.lead}
-            -day preparation window starts {prep}; recovery window ends{" "}
-            {dayOffsetDate(r.day, window.recovery)}.{" "}
+            -day preparation window starts {prep}; recovery-effort window ends{" "}
+            {dayOffsetDate(r.day, window.recovery)}. Initial rest:{" "}
+            {window.fullRest} day(s).{" "}
             {daysBetween(r.day, start) > 6
               ? "Preparation can affect this week even though the race is later."
               : "The event replaces ordinary training around race day."}
@@ -51,9 +61,11 @@ export function RaceWeekNotice({
       })}
       <p className="muted small-text">
         The baseline plan and recorded activities are retained. The calendar
-        shows the race preparation/recovery overlay; removed distance is not
-        moved elsewhere. Review the dates and race priority in Races & training
-        breaks.
+        reduces intensity and nearby supporting sessions first. Recovery runs
+        retain their distances after initial rest unless recovery evidence calls
+        for less; there is no blanket 5 km post-race cap. Removed distance is
+        not automatically made up. Review the dates and race priority in Races &
+        training breaks.
       </p>
       <Link href="/events" className="text-link">
         Manage races & training breaks →

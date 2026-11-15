@@ -1,4 +1,5 @@
 "use client";
+import { weekPurpose } from "@/shared/week-purpose";
 import { applyAvailability } from "@/shared/schedule-editing";
 import { WeekNavigator } from "../molecules/WeekNavigator";
 import { RaceWeekNotice } from "../molecules/RaceWeekNotice";
@@ -407,9 +408,7 @@ function TrainingWeekEditor({
             <span>running days</span>
           </strong>
           <span className="muted small-text">
-            {preview?.cutback
-              ? "Cutback week · room to recover"
-              : "Build gradually. Review before progressing."}
+            {weekPurpose(calendar, preview?.cutback)}
           </span>
         </div>
         {readOnlyView && (

@@ -1,3 +1,6 @@
+import { weekPurpose } from "../src/shared/week-purpose";
+import { longRunTerrain } from "../src/shared/trail-running";
+import { raceRecoveryEvidence } from "../src/server/training/race-recovery";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -102,7 +105,10 @@ function fixture(date = now) {
 function preview(
   c: Commitments,
   start = "2026-10-26",
-  options = { today, returnReady: true },
+  options: Parameters<typeof applyCommitments>[4] = {
+    today,
+    returnReady: true,
+  },
 ) {
   const plan = createTrainingPlan(1, start);
   return applyCommitments(
@@ -220,9 +226,13 @@ test("17 km trail events reserve more recovery and do not add supporting session
       d.sessions.every(
         (s) =>
           s.session.sport !== "running" ||
-          workoutKm(s.session.workout, 375) === 5,
+          workoutKm(s.session.workout, 375) > 5,
       ),
     ),
+  );
+  assert(
+    km(after) > 10,
+    "Routine trail recovery is not capped at two 5 km runs",
   );
   assert(calendarGate({ races: [r], pauses: [] }, "2026-11-02").blocked);
 });
@@ -595,4 +605,193 @@ test("marking a race completed never prescribes it again or invents Garmin confi
       cal.days[6].sessions[0].session.workout.type === "race",
   );
   db.close();
+});
+
+test("ordinary road recovery keeps existing distances after initial rest without a daily check-in", () => {
+  const r = race({ priority: "training" });
+  const after = preview({ races: [r], pauses: [] }, "2026-11-02", {
+    today: "2026-11-05",
+    returnReady: false,
+  });
+  const baseline = createTrainingPlan(1, "2026-11-02");
+  assert.equal(after.days[0].sessions.length, 0);
+  for (const offset of [1, 3, 5]) {
+    const run = after.days[offset].sessions.find(
+      (s) => s.session.sport === "running",
+    )!.session;
+    assert.ok(run.sport === "running");
+    assert.equal(
+      workoutKm(run.workout, 375),
+      workoutKm(
+        baseline.workouts.find((w) => w.dayOffset === offset)!,
+        375,
+      ),
+    );
+  }
+  assert.equal(km(after), 20);
+  assert.match(weekPurpose(after), /Race recovery/);
+  assert.doesNotMatch(weekPurpose(after), /Build gradually/);
+});
+
+test("training events keep frequency and trim only excess distance inside the reviewed budget", () => {
+  const plan = createTrainingPlan(11, "2026-11-02", 375, 270, 40);
+  const event = race({ day: "2026-11-08", priority: "training" });
+  const cal = applyCommitments(
+    buildWeekSchedule(plan, DEFAULT_WEEK_PREFERENCES, DEFAULT_PREFERENCES),
+    plan,
+    { races: [event], pauses: [] },
+    DEFAULT_TARGETS,
+    { today: "2026-11-01", returnReady: false },
+  );
+  assert.equal(km(cal), 40);
+  assert.equal(
+    cal.days.filter((d) =>
+      d.sessions.some((s) => s.session.sport === "running"),
+    ).length,
+    5,
+  );
+  assert(cal.days[3].rule?.notes.some((n) => n.includes("Only the excess")));
+  assert(cal.days.every((d) => d.sessions.length <= 2));
+  for (const d of cal.days)
+    validateDaySessions(
+      d.dayOffset,
+      d.sessions.map((s) => s.session),
+      375,
+      d.race,
+    );
+});
+
+test("training preparation preserves distance and trail effort whereas explicit goal tapers can reduce distance", () => {
+  const plan = createTrainingPlan(11, "2026-11-02", 375, 270, 40);
+  const event = race({
+    day: "2026-11-07",
+    distanceKm: 5,
+    expectedMinutes: 30,
+    priority: "training",
+    terrain: "trail",
+    elevationGain: 100,
+  });
+  const base = buildWeekSchedule(
+    plan,
+    DEFAULT_WEEK_PREFERENCES,
+    DEFAULT_PREFERENCES,
+  );
+  const cal = applyCommitments(
+    base,
+    plan,
+    { races: [event], pauses: [] },
+    DEFAULT_TARGETS,
+    { today: "2026-11-01", returnReady: false },
+  );
+  const thu = (c: typeof cal) =>
+    c.days[3].sessions.find((s) => s.session.sport === "running")!.session;
+  const training = thu(cal);
+  assert.ok(training.sport === "running");
+  assert.equal(
+    workoutKm(training.workout, 375),
+    workoutKm(
+      plan.workouts.find((w) => w.dayOffset === 3)!,
+      375,
+    ),
+  );
+  const goal = applyCommitments(
+    base,
+    plan,
+    { races: [{ ...event, priority: "goal" }], pauses: [] },
+    DEFAULT_TARGETS,
+    { today: "2026-11-01", returnReady: false },
+  );
+  const target = thu(goal);
+  assert.ok(target.sport === "running");
+  assert(workoutKm(target.workout, 375) < workoutKm(training.workout, 375));
+  const trailPlan = {
+    ...plan,
+    workouts: plan.workouts.map((w) =>
+      w.type === "long" ? longRunTerrain(w, "trail", 100, 250) : w,
+    ),
+  };
+  const post = applyCommitments(
+    buildWeekSchedule(trailPlan, DEFAULT_WEEK_PREFERENCES, DEFAULT_PREFERENCES),
+    trailPlan,
+    {
+      races: [
+        race({
+          priority: "training",
+          terrain: "trail",
+          distanceKm: 17,
+          expectedMinutes: 140,
+        }),
+      ],
+      pauses: [],
+    },
+    DEFAULT_TARGETS,
+    { today: "2026-11-01", returnReady: false },
+  );
+  const trail = post.days[5].sessions.find(
+    (s) => s.session.sport === "running",
+  )!.session;
+  assert.ok(trail.sport === "running");
+  assert(trail.workout.trail);
+  assert.equal(trail.workout.trail.road, undefined);
+  assert.deepEqual(
+    trail.workout.steps[0].kind === "step" && trail.workout.steps[0].target,
+    { kind: "effort", min: 2, max: 3 },
+  );
+});
+
+test("race recovery concerns and major events still justify reductions, and missing reports stay unknown", () => {
+  const { db, repo } = fixture(new Date("2026-11-05T12:00:00Z"));
+  try {
+    const date = new Date("2026-11-05T12:00:00Z");
+    assert.deepEqual(raceRecoveryEvidence(db, date), {
+      stopRunning: false,
+      reasons: [],
+    });
+    repo.saveCheckIn({
+      day: "2026-11-05",
+      pain: 2,
+      fatigue: 2,
+      soreness: 2,
+      notes: "",
+    });
+    const evidence = raceRecoveryEvidence(db, date);
+    assert(evidence.stopRunning);
+    assert(evidence.reasons.some((n) => n.includes("pain")));
+    const cal = preview(
+      {
+        races: [
+          race({ terrain: "trail", distanceKm: 17, expectedMinutes: 140 }),
+        ],
+        pauses: [],
+      },
+      "2026-11-02",
+      {
+        today: "2026-11-05",
+        returnReady: false,
+        raceRecovery: evidence,
+      },
+    );
+    assert.equal(cal.days[3].sessions.length, 0);
+    const wearable = preview({ races: [race()], pauses: [] }, "2026-11-02", {
+      today: "2026-11-03",
+      returnReady: false,
+      raceRecovery: { stopRunning: false, reasons: ["Garmin recovery flag"] },
+    });
+    assert(wearable.days[1].rule?.notes.includes("Garmin recovery flag"));
+    const major = preview(
+      { races: [race({ distanceKm: 42.2, expectedMinutes: 250 })], pauses: [] },
+      "2026-11-02",
+    );
+    assert(
+      major.days[3].rule?.notes.some((n) =>
+        n.includes("Major-event safeguard"),
+      ),
+    );
+    for (const d of major.days)
+      for (const e of d.sessions)
+        if (e.session.sport === "running" && e.status === "planned")
+          assert(workoutKm(e.session.workout, 375) <= 5);
+  } finally {
+    db.close();
+  }
 });
