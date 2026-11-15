@@ -195,21 +195,27 @@ export function fitMileageWeek(
         break;
       }
       const prior = old?.sport === "running" ? old.workout : null;
+      // Redistribution must not spread one day's post-race restriction across the week.
+      // Unrestricted event-week runs stay aerobic; recovery days retain their lower target.
+      const recovery =
+        day.rule?.phase === "race_recovery" || prior?.type === "recovery";
       const workout: RunWorkout = {
         dayOffset: day.dayOffset,
-        title: "Aerobic run · event-week mileage",
-        type: "recovery",
+        title: recovery
+          ? "Recovery run · event-week mileage"
+          : "Base run · event-week mileage",
+        type: recovery ? "recovery" : "base",
         steps: [
           {
             kind: "step",
             name: "Run",
             amount: { kind: "distance", meters },
             target: prior?.trail
-              ? { kind: "effort", min: 2, max: 3 }
+              ? { kind: "effort", min: recovery ? 2 : 3, max: recovery ? 3 : 4 }
               : {
                   kind: "hr",
-                  min: targets.recoveryMin,
-                  max: targets.recoveryMax,
+                  min: recovery ? targets.recoveryMin : targets.baseMin,
+                  max: recovery ? targets.recoveryMax : targets.baseMax,
                 },
           },
         ],
@@ -255,7 +261,7 @@ export function fitMileageWeek(
           warnings: session
             ? [
                 ...d.warnings,
-                "This proposed week reallocates event-adjusted running across available days at recovery effort. It preserves initial rest, the mileage target and run-distance limits; review recovery before accepting.",
+                "This proposed week reallocates event-adjusted running across available days at base effort, retaining lower recovery targets only on restricted days. It preserves initial rest, the mileage target and run-distance limits; review recovery before accepting.",
               ]
             : d.warnings,
         };

@@ -1,3 +1,4 @@
+import { fitMileageWeek } from "../src/shared/fit-mileage-week";
 import { calendarMileage } from "../src/shared/mileage";
 import { weekPurpose } from "../src/shared/week-purpose";
 import { longRunTerrain } from "../src/shared/trail-running";
@@ -800,4 +801,183 @@ test("race recovery concerns and major events still justify reductions, and miss
   } finally {
     db.close();
   }
+});
+
+test("training race preparation keeps base targets instead of applying recovery HR to every run", () => {
+  const plan = createTrainingPlan(3, "2026-11-16", 375, 270, 29);
+  const event = race({
+    day: "2026-11-22",
+    priority: "training",
+    terrain: "trail",
+    distanceKm: 18,
+    elevationGain: 900,
+    expectedMinutes: 150,
+  });
+  const commitments = { races: [event], pauses: [] };
+  const calendar = applyCommitments(
+    buildWeekSchedule(plan, DEFAULT_WEEK_PREFERENCES, DEFAULT_PREFERENCES),
+    plan,
+    commitments,
+    DEFAULT_TARGETS,
+    { today: "2026-11-15", returnReady: false },
+  );
+  const fitted = fitMileageWeek(calendar, plan, commitments, {
+    today: "2026-11-15",
+    longestRecentKm: 8,
+  });
+  assert.equal(calendarMileage(fitted.calendar, 375).countedKm, 29);
+  for (const d of fitted.calendar.days)
+    for (const s of d.sessions) {
+      if (s.session.sport !== "running" || s.session.workout.race) continue;
+      assert.equal(s.session.workout.type, "base");
+      assert(
+        s.session.workout.steps.some(
+          (step) =>
+            step.kind === "step" &&
+            step.target.kind === "hr" &&
+            step.target.max === DEFAULT_TARGETS.baseMax,
+        ),
+      );
+    }
+});
+
+test("redistributing race recovery mileage does not leak its HR ceiling past the recovery window", () => {
+  const targets = {
+    ...DEFAULT_TARGETS,
+    baseMin: 136,
+    baseMax: 149,
+    recoveryMin: 124,
+    recoveryMax: 139,
+  };
+  const plan = createTrainingPlan(6, "2026-12-07", 375, 270, 32);
+  const event = race({ day: "2026-12-05", priority: "goal" });
+  const commitments = { races: [event], pauses: [] };
+  plan.development = {
+    phase: "volume",
+    qualityLevel: 0,
+    reason: "Test",
+    targets,
+    reviewedAt: null,
+  };
+  const calendar = applyCommitments(
+    buildWeekSchedule(plan, DEFAULT_WEEK_PREFERENCES, DEFAULT_PREFERENCES),
+    plan,
+    commitments,
+    targets,
+    { today: "2026-11-15", returnReady: false },
+  );
+  // Exercise the deficit-reallocation path, as happens after calendar removal.
+  calendar.days[0].sessions = [];
+  const fitted = fitMileageWeek(calendar, plan, commitments, {
+    today: "2026-11-15",
+    longestRecentKm: 9,
+  });
+  assert(fitted.rebalanced);
+  assert.equal(calendarMileage(fitted.calendar, 375).countedKm, 32);
+  let recovery = 0,
+    base = 0;
+  for (const d of fitted.calendar.days)
+    for (const s of d.sessions) {
+      if (s.session.sport !== "running") continue;
+      const restricted = d.day <= "2026-12-08";
+      if (restricted) recovery++;
+      else base++;
+      assert.equal(s.session.workout.type, restricted ? "recovery" : "base");
+      assert.deepEqual(
+        s.session.workout.steps[0].kind === "step" &&
+          s.session.workout.steps[0].target,
+        {
+          kind: "hr",
+          min: restricted ? targets.recoveryMin : targets.baseMin,
+          max: restricted ? targets.recoveryMax : targets.baseMax,
+        },
+      );
+    }
+  assert(recovery > 0 && base > 0);
+});
+
+test("an actual demanding trail recovery week retains recovery targets on every redistributed run", () => {
+  const plan = createTrainingPlan(4, "2026-11-23", 375, 270, 23);
+  const event = race({
+    day: "2026-11-22",
+    priority: "training",
+    terrain: "trail",
+    distanceKm: 18,
+    elevationGain: 900,
+    expectedMinutes: 150,
+  });
+  const commitments = { races: [event], pauses: [] };
+  const calendar = applyCommitments(
+    buildWeekSchedule(plan, DEFAULT_WEEK_PREFERENCES, DEFAULT_PREFERENCES),
+    plan,
+    commitments,
+    DEFAULT_TARGETS,
+    { today: "2026-11-15", returnReady: false },
+  );
+  const fitted = fitMileageWeek(calendar, plan, commitments, {
+    today: "2026-11-15",
+    longestRecentKm: 8,
+  });
+  assert(fitted.rebalanced);
+  assert.equal(calendarMileage(fitted.calendar, 375).countedKm, 23);
+  assert.equal(fitted.calendar.days[0].sessions.length, 0);
+  assert.equal(fitted.calendar.days[1].sessions.length, 0);
+  for (const d of fitted.calendar.days)
+    for (const s of d.sessions) {
+      if (s.session.sport !== "running") continue;
+      assert.equal(s.session.workout.type, "recovery");
+      assert.deepEqual(
+        s.session.workout.steps[0].kind === "step" &&
+          s.session.workout.steps[0].target,
+        { kind: "hr", min: 125, max: 140 },
+      );
+    }
+});
+
+test("race preparation and budget adjustments preserve an explicitly prescribed recovery run", () => {
+  const plan = createTrainingPlan(11, "2026-11-02", 375, 270, 40);
+  const event = race({
+    day: "2026-11-08",
+    priority: "training",
+    distanceKm: 5,
+    expectedMinutes: 30,
+  });
+  const base = buildWeekSchedule(
+    plan,
+    DEFAULT_WEEK_PREFERENCES,
+    DEFAULT_PREFERENCES,
+  );
+  const run = base.days[5].sessions.find(
+    (s) => s.session.sport === "running",
+  )!.session;
+  assert(run.sport === "running");
+  run.workout = {
+    ...run.workout,
+    type: "recovery",
+    title: "Explicit recovery",
+    steps: [
+      {
+        kind: "step",
+        name: "Run",
+        amount: { kind: "distance", meters: 5000 },
+        target: { kind: "hr", min: 125, max: 140 },
+      },
+    ],
+  };
+  const calendar = applyCommitments(
+    base,
+    plan,
+    { races: [event], pauses: [] },
+    DEFAULT_TARGETS,
+    { today: "2026-11-01", returnReady: false },
+  );
+  const kept = calendar.days[5].sessions.find(
+    (s) => s.session.sport === "running",
+  )!.session;
+  assert(kept.sport === "running");
+  assert.equal(kept.workout.type, "recovery");
+  assert.deepEqual(
+    kept.workout.steps[0].kind === "step" && kept.workout.steps[0].target,
+    { kind: "hr", min: 125, max: 140 },
+  );
 });

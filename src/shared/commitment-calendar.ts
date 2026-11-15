@@ -178,17 +178,18 @@ export function raceWorkout(
     ],
   };
 }
-function recoveryRun(
+function aerobicRun(
   w: RunWorkout,
   targets: RunningTargets,
   title: string,
   meters = 5000,
   preserveTrail = false,
+  effort: "recovery" | "base" = "recovery",
 ): RunWorkout {
   return {
     dayOffset: w.dayOffset,
     title,
-    type: "recovery",
+    type: effort,
     ...(preserveTrail && w.trail
       ? {
           trail: {
@@ -211,11 +212,17 @@ function recoveryRun(
         amount: { kind: "distance", meters },
         target:
           preserveTrail && w.trail
-            ? { kind: "effort", min: 2, max: 3 }
+            ? {
+                kind: "effort",
+                min: effort === "recovery" ? 2 : 3,
+                max: effort === "recovery" ? 3 : 4,
+              }
             : {
                 kind: "hr",
-                min: targets.recoveryMin,
-                max: targets.recoveryMax,
+                min:
+                  effort === "recovery" ? targets.recoveryMin : targets.baseMin,
+                max:
+                  effort === "recovery" ? targets.recoveryMax : targets.baseMax,
               },
       },
     ],
@@ -262,7 +269,7 @@ export function applyCommitments(
                 ...entry,
                 session: {
                   ...entry.session,
-                  workout: recoveryRun(
+                  workout: aerobicRun(
                     entry.session.workout,
                     targets,
                     title,
@@ -495,7 +502,7 @@ export function applyCommitments(
         phase: "taper",
         notes: [
           before.priority === "training"
-            ? "Training event: retain ordinary run distances at recovery effort. The event replaces the long run and quality; remove nearby supporting sessions first."
+            ? "Training event: retain ordinary run distances at base effort. The event replaces the long run and quality; remove nearby supporting sessions first."
             : "Goal-race taper: reduce intensity and selected run distances deliberately to prioritize this event. No missed mileage is made up.",
         ],
       };
@@ -512,10 +519,12 @@ export function applyCommitments(
             session: {
               ...entry.session,
               workout: {
-                ...recoveryRun(
+                ...aerobicRun(
                   w,
                   targets,
-                  "Race preparation · recovery HR",
+                  w.type === "recovery"
+                    ? "Race preparation · recovery effort"
+                    : "Race preparation · base effort",
                   Math.max(
                     5000,
                     Math.floor(
@@ -528,6 +537,7 @@ export function applyCommitments(
                     ) * 10,
                   ),
                   true,
+                  w.type === "recovery" ? "recovery" : "base",
                 ),
                 calendarAdjustment: { raceId: before.id, phase: "preparation" },
               },
@@ -553,7 +563,7 @@ export function applyCommitments(
                 ...entry,
                 session: {
                   ...entry.session,
-                  workout: recoveryRun(
+                  workout: aerobicRun(
                     entry.session.workout,
                     targets,
                     "Race-week base run · distance retained",
@@ -561,6 +571,7 @@ export function applyCommitments(
                       workoutKm(entry.session.workout, plan.easyPace) * 1000,
                     ),
                     true,
+                    "base",
                   ),
                 },
               },
@@ -655,12 +666,13 @@ export function applyCommitments(
                 ...s,
                 session: {
                   ...run,
-                  workout: recoveryRun(
+                  workout: aerobicRun(
                     run.workout,
                     targets,
                     "Race-week base run · distance budget",
                     remainingMeters,
                     true,
+                    run.workout.type === "recovery" ? "recovery" : "base",
                   ),
                 },
               }
@@ -729,12 +741,13 @@ export function applyCommitments(
         if (add <= 0) continue;
         entry.session = {
           ...run,
-          workout: recoveryRun(
+          workout: aerobicRun(
             run.workout,
             targets,
             "Base run · race-week mileage allocation",
             meters + add,
             true,
+            run.workout.type === "recovery" ? "recovery" : "base",
           ),
         };
         spare -= add;
