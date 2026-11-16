@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
@@ -25,7 +26,15 @@ export async function POST(request: Request) {
         },
         { status: 400 },
       );
-    return NextResponse.json(saveRaceExtras(getDatabase(), input.data), {
+    const db = getDatabase();
+    const result = db
+      .transaction(() => {
+        const saved = saveRaceExtras(db, input.data);
+        captureUpcomingWorkouts(db, new Date(), "change");
+        return saved;
+      })
+      .immediate();
+    return NextResponse.json(result, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

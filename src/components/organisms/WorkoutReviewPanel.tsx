@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkoutReview } from "@/shared/types/workout-review";
-import { formatPace } from "@/shared/training-plan";
+import { formatPace, targetText } from "@/shared/training-plan";
 import { Button } from "../atoms/Button";
 import { StatusBadge } from "../atoms/StatusBadge";
 export function WorkoutReviewPanel({
@@ -233,6 +233,7 @@ function ReviewCard({
                 <strong>
                   {s.name} · {(s.plannedMeters / 1000).toFixed(2)} km planned
                 </strong>
+                <p className="small-text">{targetText(s.target)}</p>
                 <p className="small-text">
                   {s.recordedMeters === null
                     ? "Recorded step unknown"

@@ -1,4 +1,4 @@
-import type { RunWorkout } from "./metrics";
+import type { RunWorkout, PlanTarget } from "./metrics";
 export type PrescriptionSnapshot = {
   id: string;
   sequence: number;
@@ -15,6 +15,7 @@ export type SessionFeeling = "easier" | "right" | "harder";
 export type ReviewStep = {
   name: string;
   plannedMeters: number;
+  target: PlanTarget;
   recordedMeters: number | null;
   averageHr: number | null;
   averagePace: number | null;

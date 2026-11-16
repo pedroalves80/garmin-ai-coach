@@ -109,6 +109,7 @@ function stepReview(
     const row: ReviewStep = {
       name: s.name,
       plannedMeters: stepMeters(s, snapshot.easyPace),
+      target: s.target,
       recordedMeters: null,
       averageHr: null,
       averagePace: null,

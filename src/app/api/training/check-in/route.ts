@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
       { error: "Use valid scores and a date within the last 14 days." },
       { status: 400 },
     );
-  new TrainingRepository(getDatabase()).saveCheckIn(parsed.data);
+  const db = getDatabase();
+  db.transaction(() => {
+    new TrainingRepository(db).saveCheckIn(parsed.data);
+    captureUpcomingWorkouts(db, new Date(), "change");
+  }).immediate();
   return NextResponse.json({ saved: true });
 }

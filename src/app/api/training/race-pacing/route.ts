@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
@@ -13,7 +14,11 @@ export async function POST(request: Request) {
     if (Buffer.byteLength(text) > 1024)
       return NextResponse.json({ error: "Request too large" }, { status: 413 });
     const v = paceEvidenceSchema.parse(JSON.parse(text));
-    new RacePacingRepository(getDatabase()).save(v);
+    const db = getDatabase();
+    db.transaction(() => {
+      new RacePacingRepository(db).save(v);
+      captureUpcomingWorkouts(db, new Date(), "change");
+    }).immediate();
     return NextResponse.json({ saved: true });
   } catch {
     return NextResponse.json(

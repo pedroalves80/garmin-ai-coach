@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeMutation } from "@/server/security/authorize";
@@ -42,7 +43,10 @@ export async function POST(request: Request) {
           { error: "Target reviews cannot be future dated." },
           { status: 400 },
         );
-      repository.saveProfile(input.profile);
+      db.transaction(() => {
+        repository.saveProfile(input.profile);
+        captureUpcomingWorkouts(db, now, "change");
+      }).immediate();
     } else {
       const row = db
         .prepare("SELECT started_at FROM activities WHERE id=?")
@@ -56,7 +60,10 @@ export async function POST(request: Request) {
           { error: "Choose a recorded session within the last 90 days." },
           { status: 400 },
         );
-      repository.saveEffort(input.effort);
+      db.transaction(() => {
+        repository.saveEffort(input.effort);
+        captureUpcomingWorkouts(db, now, "change");
+      }).immediate();
     }
     return NextResponse.json({ saved: true });
   } catch {
