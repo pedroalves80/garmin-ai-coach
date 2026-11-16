@@ -461,11 +461,17 @@ export function workoutReviewSummary(
       (r) => r.distanceStatus === "met" || r.distanceStatus === "over",
     ).length,
     partial: matched.filter((r) => r.distanceStatus === "partial").length,
-    intensityUnknown: matched.filter(
+    intensityUnknown: all.filter(
       (r) =>
+        !(r.match === "automatic" || r.match === "manual") ||
         !r.versionKnown ||
         !r.steps.length ||
-        r.steps.some((s) => s.state === "unknown" || s.state === "effort_only"),
+        r.steps.some(
+          (s) =>
+            s.state === "unknown" ||
+            s.state === "effort_only" ||
+            s.state === "distance_differs",
+        ),
     ).length,
     averagesOutside: matched.filter(
       (r) =>
