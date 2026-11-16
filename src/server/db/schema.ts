@@ -175,3 +175,59 @@ export const racePaceEvidence = sqliteTable(
     ),
   ],
 );
+
+export const workoutPrescriptions = sqliteTable("workout_prescriptions", {
+  id: text("id").primaryKey(),
+  sessionKey: text("session_key").notNull(),
+  plannedDay: text("planned_day").notNull(),
+  capturedAt: text("captured_at").notNull(),
+  workoutJson: text("workout_json"),
+  easyPace: integer("easy_pace").notNull(),
+  planStart: text("plan_start").notNull(),
+  source: text("source").notNull(),
+  signature: text("signature").notNull(),
+});
+export const prescriptionCurrent = sqliteTable("prescription_current", {
+  sessionKey: text("session_key").primaryKey(),
+  snapshotId: text("snapshot_id")
+    .notNull()
+    .references(() => workoutPrescriptions.id),
+});
+export const activityPrescriptionLinks = sqliteTable(
+  "activity_prescription_links",
+  {
+    activityId: text("activity_id")
+      .primaryKey()
+      .references(() => activities.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id")
+      .unique()
+      .references(() => workoutPrescriptions.id),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
+export const activityFeedback = sqliteTable("activity_feedback", {
+  activityId: text("activity_id")
+    .primaryKey()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  feeling: text("feeling").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+export const activityDetails = sqliteTable("activity_details", {
+  activityId: text("activity_id")
+    .primaryKey()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  activityFingerprint: text("activity_fingerprint").notNull(),
+  summaryJson: text("summary_json"),
+  workoutsJson: text("workouts_json"),
+  fetchedAt: text("fetched_at").notNull(),
+  status: text("status").notNull(),
+  nextAttemptAt: text("next_attempt_at").notNull(),
+});
+export const fitnessEvidence = sqliteTable("fitness_evidence", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  observedOn: text("observed_on"),
+  dataJson: text("data_json").notNull(),
+  reportedAt: text("reported_at").notNull(),
+  archivedAt: text("archived_at"),
+});

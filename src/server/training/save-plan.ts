@@ -1,3 +1,4 @@
+import { recordPrescriptionCalendar } from "./prescription-snapshots";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
 import { applyAvailability } from "../../shared/schedule-editing";
 import { milestoneForWeek, distributeMileage } from "../../shared/milestones";
@@ -282,6 +283,14 @@ export function saveReviewedPlan(
         })),
         null,
       );
+    recordPrescriptionCalendar(
+      db,
+      selectedCalendar,
+      plan.easyPace,
+      now,
+      "approved",
+      plan.start,
+    );
     const commitments = new CommitmentRepository(db);
     for (const pause of commitments.all().pauses)
       if (pause.staleWeeks?.includes(start))

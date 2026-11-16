@@ -60,6 +60,14 @@ export class GarminClient {
     }
   }
 
+  async activityDetail(id: string, signal?: AbortSignal) {
+    if (!/^\d+$/.test(id)) throw new Error("Invalid Garmin activity ID");
+    return this.get(`/activity-service/activity/${id}`, {}, signal);
+  }
+  async activityWorkouts(id: string, signal?: AbortSignal) {
+    if (!/^\d+$/.test(id)) throw new Error("Invalid Garmin activity ID");
+    return this.get(`/activity-service/activity/${id}/workouts`, {}, signal);
+  }
   async activities(
     startDate: string,
     endDate: string,

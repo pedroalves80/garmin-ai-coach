@@ -1,3 +1,4 @@
+import type { FitnessEvidenceSummary } from "./workout-review";
 import type { RacePaceAdvice } from "./race-pacing";
 import type { TrainingPlan, TrainingWeek } from "./metrics";
 import type { WeekPreferences, WeekSchedule } from "./schedule";
@@ -40,6 +41,19 @@ export type WeeklyPlanOption = {
   rebalanced?: boolean;
 };
 export type WeeklyPlanning = {
+  workoutReview?: {
+    runs: number;
+    matched: number;
+    needsMatch: number;
+    distanceMet: number;
+    partial: number;
+    intensityUnknown: number;
+    averagesOutside: number;
+    easier: number;
+    right: number;
+    harder: number;
+  };
+  fitnessEvidence?: FitnessEvidenceSummary;
   racePaceAdvice: RacePaceAdvice[];
   start: string;
   token: string;

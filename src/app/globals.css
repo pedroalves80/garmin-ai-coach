@@ -1978,3 +1978,44 @@ textarea {
   height: 1.1rem;
   margin-top: 0.2rem;
 }
+
+.review-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+.review-totals p {
+  margin: 0;
+  min-width: 0;
+}
+.review-totals strong,
+.review-totals span {
+  display: block;
+}
+.review-totals span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.workout-review-card {
+  margin-top: 1rem;
+}
+.review-step-list {
+  padding-left: 1.2rem;
+}
+.review-step-list li {
+  margin-bottom: 0.9rem;
+}
+.review-feedback [aria-pressed="true"] {
+  border-color: var(--green);
+  background: #e8f0e4;
+}
+.fitness-evidence-row {
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.workout-review-card select,
+.fitness-evidence-row select {
+  width: 100%;
+  min-width: 0;
+}

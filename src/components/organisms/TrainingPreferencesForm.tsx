@@ -120,11 +120,11 @@ export function TrainingPreferencesForm({
         Prepare a daily AI recommendation automatically
       </label>
       <p className="muted small-text">
-        After a saved current week, fresh Garmin sync and today’s check-in, the
-        background worker prepares at most one review per day. Compact training
-        and health summaries go to OpenAI. Approval is required for changes.
-        Sunday stays off. Uses the same 6/day and 60/month limits as manual
-        reviews.
+        After a saved current week and fresh Garmin sync, the background worker
+        prepares at most one review per day. Check-ins are optional. Compact
+        training and health summaries go to OpenAI. Approval is required for
+        changes. Sunday stays off. Uses the same 6/day and 60/month limits as
+        manual reviews.
       </p>
       <p className="muted small-text">
         Up to two workouts daily. Weekday lunch: up to 2 hours. Later sessions

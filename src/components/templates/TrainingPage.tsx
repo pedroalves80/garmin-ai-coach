@@ -1,3 +1,5 @@
+import { FitnessEvidencePanel } from "@/components/organisms/FitnessEvidencePanel";
+import { fitnessEvidence } from "@/server/training/fitness-evidence";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { PageHeader } from "@/components/molecules/PageHeader";
@@ -66,6 +68,10 @@ async function Content({ view }: { view: View }) {
         />
         <TrainingPreferencesForm
           initial={new ScheduleRepository(getDatabase()).preferences()}
+        />
+        <FitnessEvidencePanel
+          evidence={fitnessEvidence(getDatabase())}
+          today={calendarDate(new Date())}
         />
         <AthleteProfileForm
           initial={new AthleteRepository(getDatabase()).profile()}

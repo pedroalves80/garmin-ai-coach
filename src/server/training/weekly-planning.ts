@@ -1,3 +1,5 @@
+import { workoutReviewSummary } from "./workout-reviews";
+import { fitnessEvidenceSummary } from "./fitness-evidence";
 import { aerobicDistanceSteps } from "../../shared/running-steps";
 import { observeRaces } from "./race-observations";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
@@ -582,7 +584,11 @@ export function weeklyPlanning(
     commitments,
     athlete.targets,
   );
+  const workoutReview = workoutReviewSummary(db, now, shiftDay(start, -7)),
+    fitnessEvidence = fitnessEvidenceSummary(db);
   const evidenceHash = fingerprint({
+    workoutReview,
+    fitnessEvidence,
     paceEvidence,
     today,
     plans,
@@ -660,7 +666,12 @@ export function weeklyPlanning(
     };
     summary = `Stage ${current.weekNumber} is active. Your saved week and daily changes remain in place.`;
   }
+  observations.push(
+    `${workoutReview.matched}/${workoutReview.runs} recent runs matched to saved prescriptions; ${workoutReview.intensityUnknown} have incomplete intensity evidence. Optional feedback: ${workoutReview.harder} harder, ${workoutReview.right} about right, ${workoutReview.easier} easier. Unknown steps do not establish failed training or require a mileage hold.`,
+  );
   return {
+    workoutReview,
+    fitnessEvidence,
     start,
     token: fingerprint({ evidenceHash, selected, source }),
     evidenceHash,

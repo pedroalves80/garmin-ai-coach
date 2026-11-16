@@ -14,7 +14,8 @@ Implemented:
 - SQLite persistence with Drizzle-compatible schema
 - Garmin token exchange, sync status and protected sync route
 - Docker and Docker Compose configuration
-- Training trends, check-ins, planned-versus-recorded distance and progression reviews
+- Training trends, optional check-ins, versioned planned-versus-completed workout reviews and progression reviews
+- Persistent fitness evidence with source, measurement date (or unknown), revision history and archiving
 - Automatically prepared weekly plans with stage continuity, one weekly approval, and optional recovery reporting
 - Daily automatic and on-demand AI reviews, cached responses and approved workout reductions
 - Automatic startup and three-hour Garmin syncing with persistent retries and worker health
@@ -52,11 +53,23 @@ Under **Availability**, block a window or whole day. Uncompleted sessions in blo
 
 **Recent changes** provides guarded undo. Undo cannot overwrite a newer edit, a recorded workout, a changed reviewed week, or changed recovery/commitment context. All affected rows save atomically, and a new activity or edit invalidates an open preview. Cross-week changes require saved weeks and respect each reviewed running budget and key-session allowance. Move a cross-week session back or undo it before replacing either reviewed week.
 
+## Learning from completed runs
+
+Open **Progress → Workout reviews** after Garmin sync. Automatic matching uses the saved prescription version known before the activity began, its date, and a unique recording. Moves, approved changes and removed runs retain immutable versions. Older weeks imported at rollout are labelled legacy baselines: the app cannot reconstruct an exact past prescription it never recorded. Confirm or correct ambiguous matches; manual links do not move training or certify an old version. A session cannot be completed by two recordings, even across prescription versions. Hyrox and race-only extras cannot complete a run.
+
+The review separates planned, counted and total distance. Distance within 90–110% of plan is a distance comparison, not proof of full workout execution. Garmin's documented detail and attached-workout endpoints are checked for at most eight recent runs per sync; unchanged data is cached. Individual warm-up/main/cool-down averages are compared only for an unambiguous single split with a matching distance. Grouped intervals, missing splits, effort execution and time in target remain unknown. Strides are not judged by reaching high HR. No FIT parsing or invented lap detail is used.
+
+**Easier / About right / Harder** is optional and can be cleared. It is separate from optional numeric RPE and symptom reports. Reviews are calculated locally; importing an activity or saving feedback does not make an AI request. Compact review counts and fitness references join the existing bounded daily/weekly coach context. Existing request budgets and approval requirements still apply; accepted weeks are not overwritten.
+
+Under **Settings → Fitness evidence**, record threshold estimates or comfortable-conversation observations. Source, observed date and reported date stay distinct. Leave the measurement date empty when unknown. Editing creates a revision; archive/restore retains history. Wearable estimates and self-reports do not automatically validate targets, change strides, or update cycling FTP. Device names and sensor labels stay out of the AI summary, as do raw Garmin details and GPS.
+
 Garmin sync uses the official [Personal API Swagger](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/) (v1.0.0, checked 2026-10-29):
 
 - `GET /activitylist-service/activities/search/activities` with `start`, `limit`, `startDate`, `endDate`; distances are meters and durations are seconds.
 - `GET /usersummary-service/v2/dailysummaries` returns `{ data: [...] }`, including nested `heartRate.restingValue` and `bodyBattery.latestValue`.
 - `GET /sleep-service/sleep/dailySleepSummariesByDate` returns daily sleep summaries; each request covers at most 31 days.
+- `GET /activity-service/activity/{activityId}` provides sanitized split summaries; `noOfSplits` can indicate aggregated data.
+- `GET /activity-service/activity/{activityId}/workouts` supplies attached workout metadata, not execution proof (detail endpoints checked against Personal Swagger on 2026-11-16).
 
 Token exchange uses the official Personal API token endpoint. Access tokens are held in memory for up to 24 hours (with an expiry margin); a 401 triggers one renewal. Network errors, HTTP 429 and 5xx responses retry at most twice with timeouts and bounded delays. Credentials and raw response bodies are never logged.
 

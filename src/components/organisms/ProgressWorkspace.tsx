@@ -1,4 +1,5 @@
 "use client";
+import { WorkoutReviewPanel } from "./WorkoutReviewPanel";
 import { useState } from "react";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import type { DashboardData } from "@/server/dashboard/data";
@@ -13,16 +14,20 @@ export function ProgressWorkspace({
   data: TrainingDashboardData;
   activities: DashboardData["activities"];
 }) {
-  const [view, setView] = useState("trends");
+  const [view, setView] = useState("workouts");
   return (
     <div className="screen-stack">
-      <SessionEffortLog sessions={data.effortSessions} />
-      <RaceMileage data={data} />
       <div
         className="segmented-control"
         role="group"
         aria-label="Progress view"
       >
+        <button
+          aria-pressed={view === "workouts"}
+          onClick={() => setView("workouts")}
+        >
+          Workout reviews
+        </button>
         <button
           aria-pressed={view === "trends"}
           onClick={() => setView("trends")}
@@ -36,7 +41,13 @@ export function ProgressWorkspace({
           Recent activities
         </button>
       </div>
-      {view === "trends" ? (
+      {view === "workouts" ? (
+        <>
+          <WorkoutReviewPanel data={data.workoutReviews} />
+          <SessionEffortLog sessions={data.effortSessions} />
+          <RaceMileage data={data} />
+        </>
+      ) : view === "trends" ? (
         <TrainingMetrics data={data} />
       ) : (
         <ActivityHistory activities={activities} />

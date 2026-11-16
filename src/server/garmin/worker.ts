@@ -1,3 +1,7 @@
+import {
+  captureExistingPrescriptions,
+  captureUpcomingWorkouts,
+} from "../training/review-capture";
 import { WeeklyPlanner, weeklyOpenAIAdapter } from "../coach/weekly";
 import Database from "better-sqlite3";
 import { getConfig } from "../config";
@@ -26,6 +30,8 @@ async function main() {
   }
   const db = getDatabase(),
     controller = new AbortController();
+  captureExistingPrescriptions(db);
+  captureUpcomingWorkouts(db);
   const coach = new AutomaticCoach(db, coachService(), !!config.OPENAI_API_KEY);
   const weekly = new WeeklyPlanner(
     db,

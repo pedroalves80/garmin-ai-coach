@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { authorizeMutation } from "@/server/security/authorize";
@@ -16,7 +17,12 @@ export async function POST(request: Request) {
         { error: "Request too large." },
         { status: 413 },
       );
-    updateCommitment(getDatabase(), JSON.parse(text));
+    const db = getDatabase(),
+      now = new Date();
+    db.transaction(() => {
+      updateCommitment(db, JSON.parse(text), now);
+      captureUpcomingWorkouts(db, now, "change");
+    })();
     return NextResponse.json(
       { saved: true },
       { headers: { "Cache-Control": "no-store" } },

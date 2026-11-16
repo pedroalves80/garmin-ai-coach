@@ -1,3 +1,8 @@
+import {
+  captureExistingPrescriptions,
+  captureUpcomingWorkouts,
+} from "../training/review-capture";
+import { enrichActivityDetails } from "./activity-details";
 import { getGarminConfig } from "../config";
 import { getDatabase } from "../db/client";
 import { GarminRepository } from "../db/garmin-repository";
@@ -6,7 +11,7 @@ import { runGarminSync } from "./sync";
 
 let cached: { key: string; client: GarminClient } | undefined;
 
-export function syncGarminData(full = false, signal?: AbortSignal) {
+export async function syncGarminData(full = false, signal?: AbortSignal) {
   const config = getGarminConfig();
   const key = config.GARMIN_PERSONAL_API_KEY;
   if (!key)
@@ -15,10 +20,24 @@ export function syncGarminData(full = false, signal?: AbortSignal) {
     );
   if (!cached || cached.key !== key)
     cached = { key, client: new GarminClient(key) };
-  return runGarminSync(new GarminRepository(getDatabase()), cached.client, {
-    full,
-    signal: signal
+  const db = getDatabase(),
+    now = new Date(),
+    combined = signal
       ? AbortSignal.any([signal, AbortSignal.timeout(5 * 60_000)])
-      : AbortSignal.timeout(5 * 60_000),
+      : AbortSignal.timeout(5 * 60_000);
+  captureExistingPrescriptions(db, now);
+  captureUpcomingWorkouts(db, now);
+  const result = await runGarminSync(new GarminRepository(db), cached.client, {
+    full,
+    signal: combined,
   });
+  // Detail availability cannot roll back an otherwise successful core health/activity sync.
+  const details = await enrichActivityDetails(
+    db,
+    cached.client,
+    new Date(),
+    combined,
+  ).catch(() => ({ fetched: 0, unavailable: 1 }));
+  captureUpcomingWorkouts(db, new Date());
+  return { ...result, reviewDetails: details };
 }

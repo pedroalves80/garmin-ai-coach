@@ -1,3 +1,4 @@
+import { recordPrescriptionCalendar } from "./prescription-snapshots";
 import { workoutMileageKm } from "../../shared/mileage";
 import { longRunTerrain } from "../../shared/trail-running";
 import { prepare } from "../db/statements";
@@ -885,6 +886,33 @@ export class ScheduleEditingService {
           this.undoContext(days),
           prepared.undoId ? stamp : null,
         );
+        for (const week of prepared.preview.weeks) {
+          const plan = new TrainingRepository(this.db)
+            .plans()
+            .find((p) => p.start === week.start);
+          if (plan)
+            recordPrescriptionCalendar(
+              this.db,
+              {
+                start: week.start,
+                days: prepared.preview.days
+                  .filter((d) => mondayOf(d.day) === week.start)
+                  .map((d) => ({
+                    day: d.day,
+                    dayOffset: Math.round(
+                      (Date.parse(d.day) - Date.parse(week.start)) / 86400000,
+                    ),
+                    sessions: d.after,
+                    recorded: [],
+                    warnings: [],
+                  })),
+              },
+              plan.easyPace,
+              this.now,
+              "change",
+              week.start,
+            );
+        }
         return { saved: true, id };
       })
       .immediate();

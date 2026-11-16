@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "../training/review-capture";
 import { prepare } from "../db/statements";
 import { randomUUID, createHash } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -202,6 +203,7 @@ export class CoachService {
             JSON.stringify(proposal.after),
             this.now().toISOString(),
           );
+        captureUpcomingWorkouts(this.db, this.now(), "change");
         review.appliedContextHash = coachContext(this.db, this.now()).hash;
         prepare(
           this.db,

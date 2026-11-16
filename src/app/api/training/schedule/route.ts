@@ -1,3 +1,4 @@
+import { captureUpcomingWorkouts } from "@/server/training/review-capture";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeMutation } from "@/server/security/authorize";
@@ -70,90 +71,96 @@ export async function POST(request: Request) {
       db = getDatabase(),
       repository = new ScheduleRepository(db),
       now = new Date();
-    if (input.action === "preferences")
-      repository.savePreferences(input.preferences);
-    else {
-      const monday = mondayOf(calendarDate(now));
-      if (
-        mondayOf(input.start) !== input.start ||
-        input.start < monday ||
-        input.start > shiftDay(monday, 730)
-      )
-        throw new ScheduleRuleError(
-          "Choose this week or a future Monday within two years.",
-        );
-      if (input.action === "week")
-        db.transaction(() => {
-          const changes = repository.changes(input.start);
+    db.transaction(() => {
+      if (input.action === "preferences")
+        repository.savePreferences(input.preferences);
+      else {
+        const monday = mondayOf(calendarDate(now));
+        if (
+          mondayOf(input.start) !== input.start ||
+          input.start < monday ||
+          input.start > shiftDay(monday, 730)
+        )
+          throw new ScheduleRuleError(
+            "Choose this week or a future Monday within two years.",
+          );
+        if (input.action === "week")
+          db.transaction(() => {
+            const changes = repository.changes(input.start);
+            const plan = new TrainingRepository(db)
+              .plans()
+              .find((p) => p.start === input.start);
+            repository.saveWeek(input.start, input.preferences);
+            if (plan) {
+              const next = buildWeekSchedule(
+                plan,
+                input.preferences,
+                repository.preferences(),
+              );
+              // Attendance edits can change supporting training without restoring a moved/reduced run.
+              repository.saveChanges(
+                changes.map((change) => ({
+                  day: change.day,
+                  sessions:
+                    change.sessions.length === 0 ||
+                    change.day < calendarDate(now)
+                      ? change.sessions
+                      : [
+                          ...change.sessions.filter(
+                            (s) => s.sport === "running",
+                          ),
+                          ...(next.days
+                            .find((d) => d.day === change.day)
+                            ?.sessions.filter(
+                              (s) => s.session.sport !== "running",
+                            )
+                            .map((s) => s.session) ?? []),
+                        ],
+                })),
+                null,
+              );
+            }
+          })();
+        else {
           const plan = new TrainingRepository(db)
             .plans()
             .find((p) => p.start === input.start);
-          repository.saveWeek(input.start, input.preferences);
-          if (plan) {
-            const next = buildWeekSchedule(
-              plan,
-              input.preferences,
-              repository.preferences(),
+          if (!plan)
+            throw new ScheduleRuleError(
+              "Save the reviewed week before moving a run.",
             );
-            // Attendance edits can change supporting training without restoring a moved/reduced run.
-            repository.saveChanges(
-              changes.map((change) => ({
-                day: change.day,
-                sessions:
-                  change.sessions.length === 0 || change.day < calendarDate(now)
-                    ? change.sessions
-                    : [
-                        ...change.sessions.filter((s) => s.sport === "running"),
-                        ...(next.days
-                          .find((d) => d.day === change.day)
-                          ?.sessions.filter(
-                            (s) => s.session.sport !== "running",
-                          )
-                          .map((s) => s.session) ?? []),
-                      ],
-              })),
-              null,
-            );
-          }
-        })();
-      else {
-        const plan = new TrainingRepository(db)
-          .plans()
-          .find((p) => p.start === input.start);
-        if (!plan)
-          throw new ScheduleRuleError(
-            "Save the reviewed week before moving a run.",
-          );
-        db.transaction(() => {
-          const changes =
-            input.action === "skip_secondary"
-              ? skipSecondarySession(
-                  db,
-                  plan,
-                  input.dayOffset,
-                  new GarminRepository(db).allActivities(),
-                  now,
-                )
-              : moveRunningDay(
-                  db,
-                  plan,
-                  input.from,
-                  input.to,
-                  new GarminRepository(db).allActivities(),
-                  now,
-                );
-          for (const change of changes)
-            validateDaySessions(
-              new Date(`${change.day}T12:00:00Z`).getUTCDay() === 0
-                ? 6
-                : (new Date(`${change.day}T12:00:00Z`).getUTCDay() + 6) % 7,
-              change.sessions,
-              plan.easyPace,
-            );
-          repository.saveChanges(changes, null);
-        })();
+          db.transaction(() => {
+            const changes =
+              input.action === "skip_secondary"
+                ? skipSecondarySession(
+                    db,
+                    plan,
+                    input.dayOffset,
+                    new GarminRepository(db).allActivities(),
+                    now,
+                  )
+                : moveRunningDay(
+                    db,
+                    plan,
+                    input.from,
+                    input.to,
+                    new GarminRepository(db).allActivities(),
+                    now,
+                  );
+            for (const change of changes)
+              validateDaySessions(
+                new Date(`${change.day}T12:00:00Z`).getUTCDay() === 0
+                  ? 6
+                  : (new Date(`${change.day}T12:00:00Z`).getUTCDay() + 6) % 7,
+                change.sessions,
+                plan.easyPace,
+              );
+            repository.saveChanges(changes, null);
+          })();
+        }
       }
-    }
+      captureUpcomingWorkouts(db, now, "change");
+    }).immediate();
     return NextResponse.json(
       { saved: true },
       { headers: { "Cache-Control": "no-store" } },

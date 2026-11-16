@@ -1,3 +1,5 @@
+import { workoutReviewSummary } from "../training/workout-reviews";
+import { fitnessEvidenceSummary } from "../training/fitness-evidence";
 import { observeRaces } from "../training/race-observations";
 import { racePacingData } from "../training/race-pacing";
 import { racePacingContext } from "../../shared/race-pacing";
@@ -512,6 +514,8 @@ export function coachContext(sqlite: Database.Database, now: Date) {
           cutback: plan.cutback,
         }
       : null,
+    workoutReview: workoutReviewSummary(sqlite, now),
+    fitnessEvidence: fitnessEvidenceSummary(sqlite),
     todayWorkout: effectiveWorkout
       ? { type: effectiveWorkout.type, steps: effectiveWorkout.steps }
       : null,

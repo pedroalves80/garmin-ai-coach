@@ -1,3 +1,5 @@
+import { workoutReviews } from "./workout-reviews";
+import { fitnessEvidence } from "./fitness-evidence";
 import { observeRaces } from "./race-observations";
 import {
   countedActivityKm,
@@ -180,6 +182,8 @@ export function trainingDashboardData(
   return {
     paceEvidence,
     racePaceAdvice,
+    workoutReviews: workoutReviews(sqlite, now),
+    fitnessEvidence: fitnessEvidence(sqlite),
     weeklyRecommendation,
     nextWeeklyRecommendation,
     recoveryEvidence,
