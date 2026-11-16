@@ -1,3 +1,4 @@
+import { aerobicDistanceSteps, withCalendarBookends } from "./running-steps";
 import {
   activeRaceSchedule,
   daysBetween,
@@ -199,27 +200,21 @@ function aerobicRun(
           },
         }
       : {}),
-    steps: [
-      {
-        kind: "step",
-        name: "Run",
-        amount: { kind: "distance", meters },
-        target:
-          preserveTrail && w.trail
-            ? {
-                kind: "effort",
-                min: effort === "recovery" ? 2 : 3,
-                max: effort === "recovery" ? 3 : 4,
-              }
-            : {
-                kind: "hr",
-                min:
-                  effort === "recovery" ? targets.recoveryMin : targets.baseMin,
-                max:
-                  effort === "recovery" ? targets.recoveryMax : targets.baseMax,
-              },
-      },
-    ],
+    steps: aerobicDistanceSteps(
+      meters,
+      preserveTrail && w.trail
+        ? {
+            kind: "effort",
+            min: effort === "recovery" ? 2 : 3,
+            max: effort === "recovery" ? 3 : 4,
+          }
+        : {
+            kind: "hr",
+            min: effort === "recovery" ? targets.recoveryMin : targets.baseMin,
+            max: effort === "recovery" ? targets.recoveryMax : targets.baseMax,
+          },
+      targets,
+    ),
   };
 }
 export function applyCommitments(
@@ -840,5 +835,5 @@ export function applyCommitments(
           "Multiple races share this week. Their recovery windows overlap; review participation and priorities.",
         );
   }
-  return result;
+  return withCalendarBookends(result, targets, options.today);
 }

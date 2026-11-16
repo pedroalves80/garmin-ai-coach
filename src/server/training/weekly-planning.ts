@@ -1,3 +1,4 @@
+import { aerobicDistanceSteps } from "../../shared/running-steps";
 import { observeRaces } from "./race-observations";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
 import { calendarMileage, countedActivityKm } from "../../shared/mileage";
@@ -320,21 +321,15 @@ export function weeklyPlanning(
         dayOffset: w.dayOffset,
         type: "recovery",
         title: "Recovery run",
-        steps: [
+        steps: aerobicDistanceSteps(
+          Math.round(workoutKm(w, plan.easyPace) * 1000),
           {
-            kind: "step",
-            name: "Run",
-            amount: {
-              kind: "distance",
-              meters: Math.round(workoutKm(w, plan.easyPace) * 1000),
-            },
-            target: {
-              kind: "hr",
-              min: athlete.targets.recoveryMin,
-              max: athlete.targets.recoveryMax,
-            },
+            kind: "hr",
+            min: athlete.targets.recoveryMin,
+            max: athlete.targets.recoveryMax,
           },
-        ],
+          athlete.targets,
+        ),
       }));
     }
     const distributed = distributeMileage(plan, longest);

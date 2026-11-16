@@ -884,8 +884,8 @@ test("redistributing race recovery mileage does not leak its HR ceiling past the
       else base++;
       assert.equal(s.session.workout.type, restricted ? "recovery" : "base");
       assert.deepEqual(
-        s.session.workout.steps[0].kind === "step" &&
-          s.session.workout.steps[0].target,
+        s.session.workout.steps[1].kind === "step" &&
+          s.session.workout.steps[1].target,
         {
           kind: "hr",
           min: restricted ? targets.recoveryMin : targets.baseMin,

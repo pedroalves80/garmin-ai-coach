@@ -1,3 +1,4 @@
+import { aerobicDistanceSteps } from "../../shared/running-steps";
 import type { CoachAction, CoachKind } from "../../shared/types/coach";
 import type { RunWorkout } from "../../shared/types/metrics";
 import { workoutKm, minimumRunKm } from "../../shared/training-plan";
@@ -66,20 +67,17 @@ export function workoutProposal(
             },
           }
         : {}),
-      steps: [
-        {
-          kind: "step",
-          name: "Run",
-          amount: { kind: "distance", meters },
-          target: before.trail
-            ? { kind: "effort", min: 2, max: 3 }
-            : {
-                kind: "hr",
-                min: context.athlete.targets.recoveryMin,
-                max: context.athlete.targets.recoveryMax,
-              },
-        },
-      ],
+      steps: aerobicDistanceSteps(
+        meters,
+        before.trail
+          ? { kind: "effort", min: 2, max: 3 }
+          : {
+              kind: "hr",
+              min: context.athlete.targets.recoveryMin,
+              max: context.athlete.targets.recoveryMax,
+            },
+        context.athlete.targets,
+      ),
     };
     if (
       workoutKm(after, context.plan.easyPace) >

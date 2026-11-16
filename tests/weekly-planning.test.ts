@@ -191,6 +191,24 @@ test("elevated resting HR produces a lighter week and preserves numeric recovery
   assert(p.selected.plan.targetKm < 25);
   assert(p.selected.plan.workouts.every((w) => w.type === "recovery"));
   assert(
+    p.options.every((o) =>
+      o.calendar.days.every((d) =>
+        d.sessions.every(({ session }) => {
+          if (session.sport !== "running") return true;
+          const steps = session.workout.steps,
+            first = steps[0],
+            last = steps.at(-1);
+          return (
+            first.kind === "step" &&
+            first.name === "Warm Up" &&
+            last?.kind === "step" &&
+            last.name === "Cool Down"
+          );
+        }),
+      ),
+    ),
+  );
+  assert(
     p.selected.calendar.days.every((d) =>
       d.sessions.every((s) => s.session.sport === "running"),
     ),

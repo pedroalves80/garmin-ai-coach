@@ -72,20 +72,25 @@ test("daily proposals never add distance or speed; weekly reviews cannot change 
     const proposal = workoutProposal(context, "today", action)!;
     assert(proposal.after);
     assert(workoutKm(proposal.after, 375) <= workoutKm(proposal.before, 375));
-    assert.deepEqual(proposal.after.steps[0], {
+    assert.deepEqual(
+      proposal.after.steps.map((s) => (s.kind === "step" ? s.name : "Repeat")),
+      ["Warm Up", "Run", "Cool Down"],
+    );
+    assert.deepEqual(proposal.after.steps[1], {
       kind: "step",
       name: "Run",
       amount: {
         kind: "distance",
-        meters: Math.max(
-          5000,
-          Math.floor(
-            (workoutKm(proposal.before, 375) *
-              1000 *
-              (action === "shorten" ? 0.8 : 1)) /
-              10,
-          ) * 10,
-        ),
+        meters:
+          Math.max(
+            5000,
+            Math.floor(
+              (workoutKm(proposal.before, 375) *
+                1000 *
+                (action === "shorten" ? 0.8 : 1)) /
+                10,
+            ) * 10,
+          ) - 1000,
       },
       target: { kind: "hr", min: 125, max: 140 },
     });

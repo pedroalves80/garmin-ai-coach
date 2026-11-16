@@ -506,10 +506,17 @@ test("a hard previous session protects today's quality even with no later sessio
     () => time,
   );
   const { review } = await coach.review("today");
-  assert.deepEqual(review.proposal?.after?.steps[0], {
+  assert.deepEqual(
+    review.proposal?.after?.steps.map((s) =>
+      s.kind === "step" ? s.name : "Repeat",
+    ),
+    ["Warm Up", "Run", "Cool Down"],
+  );
+  assert.equal(workoutKm(review.proposal!.after!, 375), 6.59);
+  assert.deepEqual(review.proposal?.after?.steps[1], {
     kind: "step",
     name: "Run",
-    amount: { kind: "distance", meters: 6590 },
+    amount: { kind: "distance", meters: 5590 },
     target: { kind: "hr", min: 128, max: 138 },
   });
   db.close();

@@ -1,3 +1,4 @@
+import { aerobicDistanceSteps } from "./running-steps";
 import type { TrainingPlan, RunWorkout } from "./types/metrics";
 import type { WeekSchedule, TrainingSession } from "./types/schedule";
 import type { Commitments } from "./types/commitments";
@@ -214,20 +215,17 @@ export function fitMileageWeek(
           ? "Recovery run · event-week mileage"
           : "Base run · event-week mileage",
         type: recovery ? "recovery" : "base",
-        steps: [
-          {
-            kind: "step",
-            name: "Run",
-            amount: { kind: "distance", meters },
-            target: prior?.trail
-              ? { kind: "effort", min: recovery ? 2 : 3, max: recovery ? 3 : 4 }
-              : {
-                  kind: "hr",
-                  min: recovery ? targets.recoveryMin : targets.baseMin,
-                  max: recovery ? targets.recoveryMax : targets.baseMax,
-                },
-          },
-        ],
+        steps: aerobicDistanceSteps(
+          meters,
+          prior?.trail
+            ? { kind: "effort", min: recovery ? 2 : 3, max: recovery ? 3 : 4 }
+            : {
+                kind: "hr",
+                min: recovery ? targets.recoveryMin : targets.baseMin,
+                max: recovery ? targets.recoveryMax : targets.baseMax,
+              },
+          targets,
+        ),
         ...(prior?.trail
           ? {
               trail: {
