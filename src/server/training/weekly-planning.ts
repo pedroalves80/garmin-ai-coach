@@ -1,3 +1,4 @@
+import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviewSummary } from "./workout-reviews";
 import { fitnessEvidenceSummary } from "./fitness-evidence";
 import { aerobicDistanceSteps } from "../../shared/running-steps";
@@ -149,6 +150,7 @@ export function weeklyPlanning(
     now,
     lastSync,
     recovery,
+    tempoEvidence(db, now),
   );
   const referenceWeek = reference
     ? (weeks.find((w) => w.start === reference.start) ??
@@ -291,7 +293,6 @@ export function weeklyPlanning(
             !reduced &&
             !gate.blocked &&
             !referenceAffected &&
-            km <= priorKm + 0.05 &&
             development.eligible,
           level: development.level,
           referenceStart: development.referenceStart,
@@ -666,6 +667,7 @@ export function weeklyPlanning(
     };
     summary = `Stage ${current.weekNumber} is active. Your saved week and daily changes remain in place.`;
   }
+  observations.push(development.reason);
   observations.push(
     `${workoutReview.matched}/${workoutReview.runs} recent runs matched to saved prescriptions; ${workoutReview.intensityUnknown} have incomplete intensity evidence. Optional feedback: ${workoutReview.harder} harder, ${workoutReview.right} about right, ${workoutReview.easier} easier. Unknown steps do not establish failed training or require a mileage hold.`,
   );

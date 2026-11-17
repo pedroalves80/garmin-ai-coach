@@ -65,6 +65,11 @@ export function saveReviewedPlan(
       "The proposed plan does not match its reviewed settings.",
       409,
     );
+  if (plan.development?.qualityForecast)
+    throw new PlanSaveError(
+      "Future tempo forecasts cannot be activated. Accept an evidence-reviewed weekly proposal instead.",
+      409,
+    );
   plan = { ...plan, planningVersion: 2 };
   validateRunningSchedule(plan);
   const previous = repository

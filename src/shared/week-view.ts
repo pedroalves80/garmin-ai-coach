@@ -1,3 +1,5 @@
+import { createTrainingPlan } from "./training-plan";
+import { forecastTempoLevel } from "./tempo-progression";
 import { milestoneForWeek, distributeMileage } from "./milestones";
 import { dayOffsetDate } from "./weekly-schedule";
 import { eventOnlyPlan } from "./commitment-calendar";
@@ -48,7 +50,7 @@ export function weekView(
       .filter((p) => p.start < start)
       .sort((a, b) => b.start.localeCompare(a.start))[0] ?? prepared;
   const stage = expected.stage;
-  const plan = developedPlan(
+  let plan = developedPlan(
     {
       weekNumber: stage,
       start,
@@ -64,6 +66,27 @@ export function weekView(
       referenceStart: null,
     },
   );
+  if (plan.development) {
+    const level = forecastTempoLevel(
+      anchor.weekNumber,
+      anchor.development?.qualityLevel ?? 0,
+      stage,
+    );
+    plan = createTrainingPlan(
+      stage,
+      start,
+      anchor.easyPace,
+      anchor.tempoPace,
+      volumeMilestones[stage - 1],
+      {
+        ...plan.development,
+        qualityLevel: level,
+        qualityForecast: true,
+        reason:
+          "Conditional tempo forecast: assumes repeated well-tolerated training at each level. Weekly approval rechecks actual running, recovery, races and breaks; this is not an approved progression or a faster-pace forecast.",
+      },
+    );
+  }
   const distributed =
     start <= dayOffsetDate(monday, 7)
       ? distributeMileage(plan, context.longestRecentKm ?? 0)

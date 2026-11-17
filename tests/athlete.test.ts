@@ -189,7 +189,7 @@ test("optional effort ratings do not block stable progression, while measured co
   assert.equal(assessProgression({ ...f, load }).decision, "hold");
 });
 
-test("quality progresses at stable volume with evidence, and never repeatedly through future previews", () => {
+test("quality can progress with a modest mileage increase and never repeatedly through future previews", () => {
   const previous = developedPlan(
     {
       weekNumber: 5,
@@ -237,7 +237,7 @@ test("quality progresses at stable volume with evidence, and never repeatedly th
     [previous],
     readiness,
   );
-  assert.equal(volume.development?.qualityLevel, 0);
+  assert.equal(volume.development?.qualityLevel, 1);
   const future = developedPlan(
     {
       weekNumber: 7,
@@ -266,7 +266,7 @@ test("quality progresses at stable volume with evidence, and never repeatedly th
   assert.deepEqual(same, held);
 });
 
-test("development requires recent reviewed targets, rated quality, recovery and combined-load evidence", () => {
+test("tempo distance at unchanged pace uses recorded quality and recovery; pace calibration is separate", () => {
   const f = returnFixture();
   const p1 = developedPlan(
     {
@@ -325,7 +325,7 @@ test("development requires recent reviewed targets, rated quality, recovery and 
       now,
       f.lastSync,
     ).eligible,
-    false,
+    true,
   );
   assert.equal(
     developmentReadiness(
@@ -338,7 +338,7 @@ test("development requires recent reviewed targets, rated quality, recovery and 
       now,
       f.lastSync,
     ).eligible,
-    false,
+    true,
   );
   assert.equal(
     developmentReadiness(

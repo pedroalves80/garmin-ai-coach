@@ -55,7 +55,7 @@ test("browsing a saved future week preserves its stage, distance and exact custo
   assert.equal(JSON.stringify(view.plan), before);
   assert.equal(weekView(monday, context).plan, current);
 });
-test("unsaved future weeks forecast milestone targets without developing quality", () => {
+test("unsaved cutback forecasts retain recovery and never activate training", () => {
   const before = JSON.stringify(context);
   const view = weekView("2026-11-23", context);
   assert.equal(view.kind, "projection");

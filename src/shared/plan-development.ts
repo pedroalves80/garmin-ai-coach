@@ -55,7 +55,15 @@ export function developedPlan(
   if (
     !existing &&
     previous &&
-    phase === "consolidate" &&
+    (phase === "consolidate" || phase === "volume") &&
+    volume <= prior * 1.1 + 0.01 &&
+    settings.tempoPace === previous.tempoPace &&
+    JSON.stringify(profile.targets) ===
+      JSON.stringify(previous.development?.targets ?? DEFAULT_TARGETS) &&
+    settings.start ===
+      new Date(Date.parse(previous.start + "T12:00:00Z") + 7 * 86400000)
+        .toISOString()
+        .slice(0, 10) &&
     readiness.eligible &&
     previous.start === readiness.referenceStart &&
     qualityLevel === readiness.level &&
@@ -74,7 +82,7 @@ export function developedPlan(
           : phase === "volume"
             ? "Build running distance while holding quality exposure."
             : phase === "quality"
-              ? "Develop tempo duration after rated, well-recovered sessions; keep weekly distance steady."
+              ? "Propose one small tempo-distance step at the existing pace after repeated recorded quality-day runs and recovery review. Keep the weekly mileage budget; extra tempo replaces base distance."
               : "Consolidate distance and quality while collecting recovery and effort evidence.";
   return createTrainingPlan(
     settings.weekNumber,

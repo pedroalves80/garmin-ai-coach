@@ -1,3 +1,4 @@
+import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviews } from "./workout-reviews";
 import { fitnessEvidence } from "./fitness-evidence";
 import { observeRaces } from "./race-observations";
@@ -143,6 +144,7 @@ export function trainingDashboardData(
     now,
     lastSync,
     recoveryEvidence,
+    tempoEvidence(sqlite, now),
   );
   const gate = calendarGate(commitments, today, monday);
   const reference = [...plans]

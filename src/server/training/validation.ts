@@ -82,6 +82,7 @@ export const savedPlanSchema: z.ZodType<TrainingPlan> =
           "return",
         ]),
         qualityLevel: z.number().int().min(0).max(6),
+        qualityForecast: z.boolean().optional(),
         reason: z.string().max(500),
         targets: runningTargetsSchema,
         reviewedAt: z.iso.date().nullable(),

@@ -21,6 +21,7 @@ export type PlanDevelopment = {
   phase:
     "volume" | "quality" | "consolidate" | "cutback" | "recovery" | "return";
   qualityLevel: number;
+  qualityForecast?: boolean;
   reason: string;
   targets: RunningTargets;
   reviewedAt: string | null;

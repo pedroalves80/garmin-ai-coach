@@ -1,3 +1,4 @@
+import { TEMPO_LEVELS, tempoLevelForVolume } from "./tempo-progression";
 import { TRAIL_GUIDANCE, trailSummary } from "./trail-running";
 import { DEFAULT_TARGETS, type PlanDevelopment } from "./types/athlete";
 import type {
@@ -191,16 +192,11 @@ export function createTrainingPlan(
     allocation.map(([, weight]) => weight),
   );
   const targets = development?.targets ?? DEFAULT_TARGETS;
-  const levels = [
-    [2, 1000],
-    [2, 1300],
-    [3, 1000],
-    [2, 1800],
-    [3, 1400],
-    [2, 2400],
-    [3, 1800],
-  ];
-  let qualityLevel = Math.min(6, Math.max(0, development?.qualityLevel ?? 1));
+  const levels = TEMPO_LEVELS;
+  let qualityLevel = tempoLevelForVolume(
+    development?.qualityLevel ?? 1,
+    volume,
+  );
   const qualityDistance = distances[allocation.findIndex(([day]) => day === 3)];
   while (
     qualityLevel > 0 &&

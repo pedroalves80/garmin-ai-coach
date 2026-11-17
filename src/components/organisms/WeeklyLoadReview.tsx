@@ -1,3 +1,4 @@
+import { tempoWork } from "@/shared/tempo-progression";
 import Link from "next/link";
 import type { TrainingDashboardData } from "@/server/training/dashboard";
 import type { TrainingPlan } from "@/shared/types/metrics";
@@ -15,14 +16,25 @@ export function WeeklyLoadReview({
   development: TrainingDashboardData["development"];
 }) {
   const review = reviewPlannedWeek(calendar, plan, load);
+  const tempo = calendar.days
+    .flatMap((d) =>
+      d.sessions.flatMap((s) =>
+        s.session.sport === "running" ? [tempoWork(s.session.workout)] : [],
+      ),
+    )
+    .filter((w) => w !== null)
+    .reduce((n, w) => n + w.meters, 0);
   return (
     <section className="surface">
       <span className="eyebrow">
-        RUNNING DEVELOPMENT · {plan.development?.phase ?? "REVIEWED BASELINE"}
+        RUNNING DEVELOPMENT ·{" "}
+        {plan.development?.qualityForecast
+          ? "CONDITIONAL FORECAST"
+          : (plan.development?.phase ?? "REVIEWED BASELINE")}
       </span>
       <h2>
         {plan.development?.phase === "quality"
-          ? "Develop quality at steady volume"
+          ? "Develop tempo at your existing pace"
           : plan.development?.phase === "return"
             ? "Return after a planned cutback"
             : plan.cutback
@@ -33,10 +45,18 @@ export function WeeklyLoadReview({
         {plan.development?.reason ??
           "Approved steps remain unchanged until you review a new running week."}
       </p>
+      <p className="small-text">
+        <strong>{(tempo / 1000).toFixed(2)} km tempo work</strong> ·{" "}
+        {plan.development?.qualityForecast
+          ? "Conditional on completed training and weekly approval."
+          : "Tempo replaces base distance within this week’s total."}{" "}
+        Strides stay short and unchanged.
+      </p>
       {!development.calibrationFresh && (
         <p className="muted small-text">
-          Running targets need review. Quality development is held until current
-          evidence is recorded in Settings.
+          A current target review is needed before faster pace or higher HR
+          targets. Tempo distance can develop at unchanged targets when recorded
+          training and recovery support it.
         </p>
       )}
       {review.warnings.length > 0 && (

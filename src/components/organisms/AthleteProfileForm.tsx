@@ -211,10 +211,11 @@ export function AthleteProfileForm({
           />
         </label>
         <p className="muted small-text">
-          Quality development needs a target review within six weeks, completed
-          rated quality sessions and good recovery. Strides stay controlled and
-          relaxed. Save target changes at steady volume before increasing
-          mileage.
+          Faster pace or higher HR targets need a target review within six
+          weeks. Tempo distance can grow at the existing pace from repeated
+          recorded quality-day runs and recovery evidence; effort ratings stay
+          optional. Strides stay controlled and relaxed. Review faster targets
+          at steady volume.
         </p>
         <div>
           <Button disabled={pending}>Save running targets</Button>
