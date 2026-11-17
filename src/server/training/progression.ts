@@ -1,3 +1,7 @@
+import {
+  trainingCycle,
+  type PlanningPolicy,
+} from "../../shared/training-cycle";
 import { supportingWorkload } from "./weekly-policy";
 import type { RecoveryEvidence } from "../../shared/types/weekly-planning";
 import type {
@@ -7,11 +11,7 @@ import type {
   TrainingPlan,
   TrainingWeek,
 } from "../../shared/types/metrics";
-import {
-  planKm,
-  workoutKm,
-  volumeMilestones,
-} from "../../shared/training-plan";
+import { planKm, workoutKm } from "../../shared/training-plan";
 import { calendarDate, shiftDay } from "./dates";
 import type { combinedLoadReview } from "./load";
 import { sportGroup } from "./metrics";
@@ -23,6 +23,7 @@ export function assessProgression(input: {
   checkIns: DailyCheckIn[];
   activities: ActivityMeasurement[];
   lastSync: string | null;
+  policy?: PlanningPolicy;
   recovery?: RecoveryEvidence;
   load?: ReturnType<typeof combinedLoadReview>;
 }): ProgressionDecision {
@@ -114,8 +115,14 @@ export function assessProgression(input: {
       "hold",
       "Recorded combined effort calls for consolidation before adding running volume.",
     );
-  const nextMilestone = volumeMilestones[Math.min(reference.weekNumber, 29)];
-  if ((reference.weekNumber + 1) % 4 === 0 && nextMilestone < km!)
+  const nextCycle = trainingCycle(
+    reference.weekNumber + 1,
+    input.policy ?? reference.policy,
+    shiftDay(reference.start, 7),
+  );
+  const nextMilestone = nextCycle.km,
+    maximum = nextCycle.ceilingKm;
+  if (nextCycle.cutback && nextMilestone < km!)
     return result(
       "reduce",
       "The next stage is a scheduled cutback. Review a lighter week before building again.",
@@ -125,16 +132,22 @@ export function assessProgression(input: {
           nextMilestone,
           Math.round(
             km! *
-              (nextMilestone / volumeMilestones[reference.weekNumber - 1]) *
+              (nextMilestone /
+                trainingCycle(
+                  reference.weekNumber,
+                  reference.policy,
+                  reference.start,
+                ).km) *
               10,
           ) / 10,
         ),
       ),
     );
-  if (km! >= 79.95)
+  if (reference.weekNumber >= 30 && nextMilestone <= km! + 0.05)
     return result(
-      "hold",
-      "The 80 km milestone is reached. Consolidate this volume and review the next training block.",
+      nextMilestone < km! - 0.05 ? "reduce" : "hold",
+      `${nextCycle.label}. Continue the ongoing training cycle at the reviewed ceiling.`,
+      nextMilestone,
     );
   const longestRecent = Math.max(
     0,
@@ -160,7 +173,9 @@ export function assessProgression(input: {
   if (
     reference.cutback &&
     (reference.development?.phase === "cutback" ||
-      (!reference.development && reference.weekNumber % 4 === 0))
+      (!reference.development &&
+        trainingCycle(reference.weekNumber, reference.policy, reference.start)
+          .cutback))
   ) {
     const established = [...input.plans]
       .filter(
@@ -181,16 +196,13 @@ export function assessProgression(input: {
           week.runningKm >= planKm(p) * 0.9 &&
           (recovery.length > 0 || input.recovery?.status === "supportive") &&
           recovery.every((c) => !c.pain && c.fatigue <= 2 && c.soreness <= 2) &&
-          (!input.load ||
-            (loadWeek &&
-              loadWeek.unknownSessions === 0 &&
-              loadWeek.coverage >= 0.8))
+          (!input.load || (loadWeek && loadWeek.hardDays <= 3))
         );
       });
     if (established) {
       const completed = input.weeks.find((w) => w.start === established.start)!;
       const restored = Math.min(
-        80,
+        maximum,
         nextMilestone,
         planKm(established),
         completed.runningKm,
@@ -206,6 +218,8 @@ export function assessProgression(input: {
   return result(
     "increase",
     "The completed running week and available recovery evidence support a small proposed increase. Review the prepared week once before it becomes active.",
-    Math.round(Math.min(80, km! + Math.min(2, km! * 0.05)) * 10) / 10,
+    Math.round(
+      Math.min(maximum, nextMilestone, km! + Math.min(2, km! * 0.05)) * 10,
+    ) / 10,
   );
 }

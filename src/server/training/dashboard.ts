@@ -1,3 +1,4 @@
+import { planningPolicy } from "./planning-policy";
 import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviews } from "./workout-reviews";
 import { fitnessEvidence } from "./fitness-evidence";
@@ -162,6 +163,7 @@ export function trainingDashboardData(
       : "Complete a normal reviewed baseline after race recovery or a break before progressing.";
   }
   const progression = assessProgression({
+    policy: planningPolicy(sqlite),
     now,
     plans,
     weeks,
@@ -186,6 +188,7 @@ export function trainingDashboardData(
     racePaceAdvice,
     workoutReviews: workoutReviews(sqlite, now),
     fitnessEvidence: fitnessEvidence(sqlite),
+    policy: planningPolicy(sqlite),
     weeklyRecommendation,
     nextWeeklyRecommendation,
     recoveryEvidence,

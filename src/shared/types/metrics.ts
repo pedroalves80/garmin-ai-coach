@@ -65,6 +65,7 @@ export type RunWorkout = {
 };
 
 export type TrainingPlan = {
+  policy?: import("../training-cycle").PlanningPolicy;
   planningVersion?: 2;
   development?: import("./athlete").PlanDevelopment;
   weekNumber: number;

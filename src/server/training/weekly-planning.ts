@@ -1,3 +1,5 @@
+import { planningPolicy } from "./planning-policy";
+import { trainingCycle } from "../../shared/training-cycle";
 import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviewSummary } from "./workout-reviews";
 import { fitnessEvidenceSummary } from "./fitness-evidence";
@@ -21,11 +23,7 @@ import type {
   WeeklyOptionId,
 } from "../../shared/types/weekly-planning";
 import { DEFAULT_WEEK_PREFERENCES } from "../../shared/types/schedule";
-import {
-  planKm,
-  volumeMilestones,
-  workoutKm,
-} from "../../shared/training-plan";
+import { planKm, workoutKm } from "../../shared/training-plan";
 import { developedPlan } from "../../shared/plan-development";
 import {
   applyCommitments,
@@ -100,8 +98,9 @@ export function weeklyPlanning(
     schedule = new ScheduleRepository(db);
   if (start !== mondayOf(today) && start !== shiftDay(mondayOf(today), 7))
     throw new Error("Review this week or the immediately following week.");
+  const policy = planningPolicy(db);
   const plans = repo.plans(),
-    expected = milestoneForWeek(start, plans),
+    expected = milestoneForWeek(start, plans, policy),
     savedCurrent = plans.find((p) => p.start === start),
     correction = !!savedCurrent && savedCurrent.weekNumber !== expected.stage,
     current = correction ? undefined : savedCurrent,
@@ -180,7 +179,7 @@ export function weeklyPlanning(
     !!referenceWeek &&
     referenceWeek.runningKm >= Math.max(5, referenceExpected) * 0.9;
   const stage = current?.weekNumber ?? expected.stage;
-  const ceiling = volumeMilestones[stage - 1];
+  const ceiling = trainingCycle(stage, policy, start).km;
   const fresh =
     !!lastSync &&
     Date.parse(lastSync) <= now.getTime() &&
@@ -232,7 +231,7 @@ export function weeklyPlanning(
       `Saved Stage ${savedCurrent!.weekNumber} is stale: this calendar week belongs to Stage ${stage}. Review the corrected ${ceiling} km proposal; the old snapshot stays active until acceptance.`,
     );
   reasons.push(
-    `Milestone sequence: Stage ${stage} targets ${ceiling} km. Races count by course distance; Hyrox and race warm-up/cool-down are excluded from mileage but retained in physical load.`,
+    `Training week ${stage}: ${trainingCycle(stage, policy, start).label}, ${ceiling} km budget. Races count by course distance; Hyrox and race warm-up/cool-down are excluded from mileage but retained in physical load.`,
   );
   reasons.push(
     distance >= ceiling - 0.01
@@ -278,6 +277,7 @@ export function weeklyPlanning(
       developedPlan(
         {
           weekNumber: stage,
+          policy,
           start,
           easyPace:
             current?.easyPace ?? reference?.easyPace ?? athlete.easyPace,
@@ -588,6 +588,7 @@ export function weeklyPlanning(
   const workoutReview = workoutReviewSummary(db, now, shiftDay(start, -7)),
     fitnessEvidence = fitnessEvidenceSummary(db);
   const evidenceHash = fingerprint({
+    policy,
     workoutReview,
     fitnessEvidence,
     paceEvidence,
@@ -618,7 +619,7 @@ export function weeklyPlanning(
             : "pending";
   let selected = recommendation,
     summary = reference
-      ? `Stage ${stage} is prepared from your completed training. ${recommendation.plan.targetKm.toFixed(1)} km proposed; accept once to activate this week.`
+      ? `${stage <= 30 ? "Stage" : "Week"} ${stage} is prepared from your completed training. ${recommendation.plan.targetKm.toFixed(1)} km proposed; accept once to activate this week.`
       : "Your starting week is ready to review and accept.";
   let observations = [
     ...recovery.notes,
@@ -665,7 +666,7 @@ export function weeklyPlanning(
       preferences: schedule.week(start),
       calendar: trainingCalendar(db, current, activities, now),
     };
-    summary = `Stage ${current.weekNumber} is active. Your saved week and daily changes remain in place.`;
+    summary = `${current.weekNumber <= 30 ? "Stage" : "Week"} ${current.weekNumber} is active. Your saved week and daily changes remain in place.`;
   }
   observations.push(development.reason);
   observations.push(
@@ -674,6 +675,7 @@ export function weeklyPlanning(
   return {
     workoutReview,
     fitnessEvidence,
+    cycle: trainingCycle(stage, current?.policy ?? policy, start),
     start,
     token: fingerprint({ evidenceHash, selected, source }),
     evidenceHash,

@@ -14,7 +14,7 @@ import {
   pauseActive,
   pendingReturn,
 } from "@/shared/commitment-calendar";
-import { createTrainingPlan, workoutKm } from "@/shared/training-plan";
+import { workoutKm } from "@/shared/training-plan";
 import { buildWeekSchedule, dayOffsetDate } from "@/shared/weekly-schedule";
 import { DEFAULT_WEEK_PREFERENCES } from "@/shared/types/schedule";
 import { Button } from "../atoms/Button";
@@ -86,18 +86,14 @@ export function TrainingCalendarManager({
       Number(distance) >= 1 &&
       Number(distance) <= 100
     ) {
-      const week = monday(previewDay),
-        reference =
-          data.plans.find((p) => p.start === week) ?? data.previewPlan;
-      const plan = reference
-        ? { ...reference, start: week }
-        : createTrainingPlan(
-            1,
-            week,
-            data.athlete.easyPace,
-            data.athlete.tempoPace,
-            25,
-          );
+      const week = monday(previewDay);
+      const plan = weekView(week, {
+        monday: data.monday,
+        plans: data.plans,
+        prepared: data.previewPlan ?? data.weeklyRecommendation.selected.plan,
+        athlete: data.athlete,
+        policy: data.policy,
+      }).plan;
       const original = buildWeekSchedule(
         plan,
         data.weekSettings[week] ?? DEFAULT_WEEK_PREFERENCES,
@@ -179,6 +175,7 @@ export function TrainingCalendarManager({
           plans: data.plans,
           prepared: data.weeklyRecommendation.selected.plan,
           athlete: data.athlete,
+          policy: data.policy,
         }).plan;
         const baseline =
           data.calendarBaselines[start] ??

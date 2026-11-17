@@ -4,7 +4,7 @@ import { milestoneForWeek, distributeMileage } from "./milestones";
 import { dayOffsetDate } from "./weekly-schedule";
 import { eventOnlyPlan } from "./commitment-calendar";
 import { developedPlan } from "./plan-development";
-import { volumeMilestones } from "./training-plan";
+import { trainingCycle, type PlanningPolicy } from "./training-cycle";
 import type { TrainingPlan } from "./types/metrics";
 import type { AthleteProfile } from "./types/athlete";
 import type { WeekPreferences } from "./types/schedule";
@@ -26,11 +26,12 @@ export function weekView(
     prepared: TrainingPlan;
     athlete: AthleteProfile;
     longestRecentKm?: number;
+    policy?: PlanningPolicy;
   },
 ) {
   const { monday, plans, prepared, athlete } = context;
   const saved = plans.find((p) => p.start === start);
-  const expected = milestoneForWeek(start, plans);
+  const expected = milestoneForWeek(start, plans, context.policy);
   const correction =
     !!saved && start >= monday && saved.weekNumber !== expected.stage;
   if (saved && !correction) return { plan: saved, kind: "reviewed" as const };
@@ -56,7 +57,8 @@ export function weekView(
       start,
       easyPace: anchor.easyPace,
       tempoPace: anchor.tempoPace,
-      targetKm: volumeMilestones[stage - 1],
+      targetKm: expected.km,
+      policy: context.policy,
     },
     athlete,
     plans,
@@ -71,20 +73,24 @@ export function weekView(
       anchor.weekNumber,
       anchor.development?.qualityLevel ?? 0,
       stage,
+      context.policy,
+      start,
     );
     plan = createTrainingPlan(
       stage,
       start,
       anchor.easyPace,
       anchor.tempoPace,
-      volumeMilestones[stage - 1],
+      expected.km,
       {
         ...plan.development,
         qualityLevel: level,
         qualityForecast: true,
         reason:
-          "Conditional tempo forecast: assumes repeated well-tolerated training at each level. Weekly approval rechecks actual running, recovery, races and breaks; this is not an approved progression or a faster-pace forecast.",
+          trainingCycle(stage, context.policy, start).label +
+          ". Conditional tempo forecast: assumes repeated well-tolerated training. Weekly approval rechecks actual training, races and breaks; no faster pace is assumed.",
       },
+      context.policy,
     );
   }
   const distributed =

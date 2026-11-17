@@ -41,6 +41,7 @@ export type WeeklyPlanOption = {
   rebalanced?: boolean;
 };
 export type WeeklyPlanning = {
+  cycle?: ReturnType<typeof import("../training-cycle").trainingCycle>;
   workoutReview?: {
     runs: number;
     matched: number;

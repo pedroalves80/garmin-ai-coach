@@ -1,14 +1,11 @@
+import { trainingCycle } from "./training-cycle";
 import { aerobicDistanceSteps } from "./running-steps";
 import type { TrainingPlan, RunWorkout } from "./types/metrics";
 import type { WeekSchedule, TrainingSession } from "./types/schedule";
 import type { Commitments } from "./types/commitments";
 import { DEFAULT_TARGETS } from "./types/athlete";
 import { calendarMileage } from "./mileage";
-import {
-  createTrainingPlan,
-  volumeMilestones,
-  workoutKm,
-} from "./training-plan";
+import { createTrainingPlan, workoutKm } from "./training-plan";
 import { activeRaceSchedule } from "./race-policy";
 import { daysBetween, raceWindow } from "./commitment-calendar";
 import { validateDaySessions } from "./weekly-schedule";
@@ -114,13 +111,24 @@ export function fitMileageWeek(
   const remaining = Math.round((plan.targetKm - lockedKm) * 1000);
   if (remaining < 5000) return unchanged;
   let peak = plan;
-  if (plan.cutback && plan.weekNumber % 4 === 0)
+  if (
+    plan.cutback &&
+    trainingCycle(plan.weekNumber, plan.policy, plan.start).cutback
+  )
     peak = createTrainingPlan(
       plan.weekNumber - 1,
       plan.start,
       plan.easyPace,
       plan.tempoPace,
-      volumeMilestones[plan.weekNumber - 2],
+      trainingCycle(
+        plan.weekNumber - 1,
+        plan.policy,
+        new Date(Date.parse(plan.start + "T12:00:00Z") - 7 * 86400000)
+          .toISOString()
+          .slice(0, 10),
+      ).km,
+      undefined,
+      plan.policy,
     );
   const peakCap = Math.max(
     ...peak.workouts.map((w) => workoutKm(w, plan.easyPace)),

@@ -1,3 +1,4 @@
+import { planningPolicy } from "./planning-policy";
 import { recordPrescriptionCalendar } from "./prescription-snapshots";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
 import { applyAvailability } from "../../shared/schedule-editing";
@@ -48,7 +49,14 @@ export function saveReviewedPlan(
   let plan =
     exactPlan ??
     developedPlan(
-      { weekNumber, start, easyPace, tempoPace, targetKm },
+      {
+        weekNumber,
+        start,
+        easyPace,
+        tempoPace,
+        targetKm,
+        policy: planningPolicy(db),
+      },
       data.athlete,
       repository.plans(),
       data.development,
@@ -77,7 +85,11 @@ export function saveReviewedPlan(
     .filter((p) => p.start < start)
     .sort((a, b) => b.start.localeCompare(a.start))[0];
   const existing = repository.plans().find((p) => p.start === start);
-  const expected = milestoneForWeek(start, repository.plans());
+  const expected = milestoneForWeek(
+    start,
+    repository.plans(),
+    planningPolicy(db),
+  );
   const proposal =
     start === data.weeklyRecommendation.start
       ? data.weeklyRecommendation

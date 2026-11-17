@@ -63,7 +63,7 @@ export function WeeklyPlanReview({
           <span className="eyebrow">YOUR WEEKLY COACH · {planning.start}</span>
           <h2 id={compact ? "weekly-ready-heading" : "weekly-review-heading"}>
             {reference
-              ? `Stage ${reference.stage} reviewed → Stage ${plan.weekNumber}`
+              ? `${reference.stage <= 30 ? "Stage" : "Week"} ${reference.stage} reviewed → ${plan.weekNumber <= 30 ? "Stage" : "Week"} ${plan.weekNumber}`
               : "Your starting week is ready"}
           </h2>
         </div>

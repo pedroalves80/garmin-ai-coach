@@ -231,3 +231,8 @@ export const fitnessEvidence = sqliteTable("fitness_evidence", {
   reportedAt: text("reported_at").notNull(),
   archivedAt: text("archived_at"),
 });
+
+export const planningPolicy = sqliteTable("planning_policy", {
+  id: integer("id").primaryKey(),
+  policyJson: text("policy_json").notNull(),
+});

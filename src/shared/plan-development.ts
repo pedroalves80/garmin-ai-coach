@@ -1,4 +1,5 @@
-import { createTrainingPlan, planKm, volumeMilestones } from "./training-plan";
+import { trainingCycle, type PlanningPolicy } from "./training-cycle";
+import { createTrainingPlan, planKm } from "./training-plan";
 import type { TrainingPlan } from "./types/metrics";
 import {
   DEFAULT_TARGETS,
@@ -12,6 +13,7 @@ export function developedPlan(
     easyPace: number;
     tempoPace: number;
     targetKm?: number;
+    policy?: PlanningPolicy;
   },
   profile: AthleteProfile,
   plans: TrainingPlan[],
@@ -35,20 +37,29 @@ export function developedPlan(
       JSON.stringify(profile.targets)
   )
     return existing;
-  const volume = settings.targetKm ?? volumeMilestones[settings.weekNumber - 1],
+  const cycle = trainingCycle(
+    settings.weekNumber,
+    settings.policy,
+    settings.start,
+  );
+  const volume = settings.targetKm ?? cycle.km,
     prior = previous ? planKm(previous) : volume;
-  let phase: PlanDevelopment["phase"] =
-    settings.weekNumber % 4 === 0
-      ? "cutback"
-      : previous && volume < prior * 0.9
-        ? "recovery"
-        : volume > prior + 0.05
-          ? previous?.cutback &&
-            (previous.development?.phase === "cutback" ||
-              (!previous.development && previous.weekNumber % 4 === 0))
-            ? "return"
-            : "volume"
-          : "consolidate";
+  let phase: PlanDevelopment["phase"] = cycle.cutback
+    ? "cutback"
+    : previous && volume < prior * 0.9
+      ? "recovery"
+      : volume > prior + 0.05
+        ? previous?.cutback &&
+          (previous.development?.phase === "cutback" ||
+            (!previous.development &&
+              trainingCycle(
+                previous.weekNumber,
+                previous.policy,
+                previous.start,
+              ).cutback))
+          ? "return"
+          : "volume"
+        : "consolidate";
   let qualityLevel = previous?.development?.qualityLevel ?? 0;
   // Re-saving a week cannot increment quality repeatedly.
   if (existing?.development) qualityLevel = existing.development.qualityLevel;
@@ -97,5 +108,6 @@ export function developedPlan(
       targets: profile.targets,
       reviewedAt: profile.reviewedAt,
     },
+    settings.policy,
   );
 }

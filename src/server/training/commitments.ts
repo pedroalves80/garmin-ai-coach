@@ -1,3 +1,5 @@
+import { milestoneForWeek } from "../../shared/milestones";
+import { planningPolicy } from "./planning-policy";
 import { observeRaces } from "./race-observations";
 import {
   activeRaceSchedule,
@@ -313,13 +315,10 @@ export function updateCommitment(
             );
           const training = new TrainingRepository(db),
             monday = mondayOf(today),
-            prior = training
-              .plans()
-              .filter((p) => p.start <= monday)
-              .sort((a, b) => b.start.localeCompare(a.start))[0],
             profile = new AthleteRepository(db).profile();
           const plan = createTrainingPlan(
-            prior?.weekNumber ?? 1,
+            milestoneForWeek(monday, training.plans(), planningPolicy(db))
+              .stage,
             monday,
             profile.easyPace,
             profile.tempoPace,
@@ -332,6 +331,7 @@ export function updateCommitment(
               targets: profile.targets,
               reviewedAt: profile.reviewedAt,
             },
+            planningPolicy(db),
           );
           training.savePlan(plan);
           for (const older of c.pauses.filter(

@@ -102,7 +102,7 @@ test("all 30 plans use exact distance steps, with at least 5 km per run at every
     monday.steps.reduce((sum, s) => sum + stepSeconds(s, 300), 0),
     monday.steps.reduce((sum, s) => sum + stepSeconds(s, 480), 0),
   );
-  assert.throws(() => createTrainingPlan(31, "2026-10-26"), /Invalid/);
+  assert.equal(createTrainingPlan(31, "2027-05-31").targetKm, 76);
   const adjusted = createTrainingPlan(2, "2026-11-02", 375, 270, 26.3);
   assert(Math.abs(planKm(adjusted) - 26.3) < 0.000001);
   assert.throws(

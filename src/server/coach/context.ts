@@ -1,3 +1,5 @@
+import { planningPolicy } from "../training/planning-policy";
+import { trainingCycle } from "../../shared/training-cycle";
 import { workoutReviewSummary } from "../training/workout-reviews";
 import { fitnessEvidenceSummary } from "../training/fitness-evidence";
 import { observeRaces } from "../training/race-observations";
@@ -347,6 +349,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
     "SELECT day,sleep_seconds AS sleepSeconds,resting_heart_rate AS restingHeartRate,body_battery AS bodyBattery FROM daily_health WHERE day BETWEEN ? AND ? ORDER BY day",
   ).all(shiftDay(day, -6), day);
   const progression = assessProgression({
+    policy: planningPolicy(sqlite),
     now,
     plans,
     weeks,
@@ -512,6 +515,7 @@ export function coachContext(sqlite: Database.Database, now: Date) {
           start: plan.start,
           targetKm: plan.targetKm,
           cutback: plan.cutback,
+          cycle: trainingCycle(plan.weekNumber, plan.policy, plan.start),
         }
       : null,
     workoutReview: workoutReviewSummary(sqlite, now),

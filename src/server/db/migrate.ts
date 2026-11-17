@@ -102,6 +102,7 @@ export function migrateDatabase(sqlite: Database.Database) {
   CREATE TABLE IF NOT EXISTS activity_feedback(activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,feeling TEXT NOT NULL CHECK(feeling IN ('easier','right','harder')),updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS activity_details(activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,activity_fingerprint TEXT NOT NULL,summary_json TEXT,workouts_json TEXT,fetched_at TEXT NOT NULL,status TEXT NOT NULL,next_attempt_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS fitness_evidence(id TEXT PRIMARY KEY,kind TEXT NOT NULL,observed_on TEXT,data_json TEXT NOT NULL,reported_at TEXT NOT NULL,archived_at TEXT);
+  CREATE TABLE IF NOT EXISTS planning_policy(id INTEGER PRIMARY KEY CHECK(id=1),policy_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS athlete_profile(id INTEGER PRIMARY KEY CHECK(id=1),profile_json TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS session_efforts(activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,rpe INTEGER NOT NULL CHECK(rpe BETWEEN 1 AND 10),prescription_completed INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
 `);

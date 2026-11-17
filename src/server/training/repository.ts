@@ -29,7 +29,7 @@ export class TrainingRepository {
   plans(): TrainingPlan[] {
     const rows = prepare(
       this.sqlite,
-      "SELECT plan_json FROM training_plans ORDER BY week_start DESC LIMIT 156",
+      "SELECT plan_json FROM training_plans ORDER BY week_start DESC",
     ).all() as { plan_json: string }[];
     return rows.map((row) => savedPlanSchema.parse(JSON.parse(row.plan_json)));
   }
@@ -75,7 +75,7 @@ export class TrainingRepository {
     return (
       prepare(
         this.sqlite,
-        "SELECT o.day,o.workout_json,r.review_json FROM coach_overrides o JOIN coach_reviews r ON r.id=o.review_id ORDER BY o.day DESC LIMIT 52",
+        "SELECT o.day,o.workout_json,r.review_json FROM coach_overrides o JOIN coach_reviews r ON r.id=o.review_id ORDER BY o.day DESC",
       ).all() as { day: string; workout_json: string; review_json: string }[]
     ).map((row) => ({
       day: row.day,

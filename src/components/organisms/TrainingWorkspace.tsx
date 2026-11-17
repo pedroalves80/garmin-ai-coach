@@ -1,4 +1,5 @@
 "use client";
+import { trainingCycle } from "@/shared/training-cycle";
 import { fitMileageWeek } from "@/shared/fit-mileage-week";
 import { calendarMileage, workoutMileageKm } from "@/shared/mileage";
 import { weekPurpose } from "@/shared/week-purpose";
@@ -23,7 +24,6 @@ import {
   formatPace,
   planKm,
   minimumRunKm,
-  volumeMilestones,
 } from "@/shared/training-plan";
 import { developedPlan } from "@/shared/plan-development";
 import { WeeklyLoadReview } from "./WeeklyLoadReview";
@@ -64,6 +64,7 @@ function matchesGeneratedWeek(
       plan.tempoPace,
       plan.targetKm,
       plan.development,
+      plan.policy,
     );
     return (
       plan.workouts.length === generated.workouts.length &&
@@ -151,6 +152,7 @@ function TrainingWeekEditor({
     plans: data.plans,
     prepared: prepared.plan,
     athlete: data.athlete,
+    policy: data.policy,
     longestRecentKm: data.calendarOptions.longestRecentKm,
   });
   const viewAttendance = attendanceForWeek(
@@ -206,6 +208,7 @@ function TrainingWeekEditor({
               easyPace: parsePace(easy),
               tempoPace: parsePace(tempo),
               targetKm: Number(targetKm),
+              policy: data.policy,
             },
             data.athlete,
             data.plans,
@@ -391,7 +394,7 @@ function TrainingWeekEditor({
         <div className="section-heading">
           <div>
             <span className="eyebrow">
-              STAGE {week} OF {volumeMilestones.length}
+              {week <= 30 ? `STAGE ${week} OF 30` : `TRAINING WEEK ${week}`}
               {preview?.cutback ? " · CUTBACK" : ""}
             </span>
             <h2>
@@ -432,9 +435,13 @@ function TrainingWeekEditor({
         </div>
         {calendar && preview && (
           <p className="muted small-text">
-            {volumeMilestones[preview.weekNumber - 1].toFixed(1)} km milestone →{" "}
-            {effectiveKm.toFixed(1)} km scheduled. Mileage target excludes Hyrox
-            and race warm-up/cool-down.{" "}
+            {trainingCycle(
+              preview.weekNumber,
+              preview.policy ?? data.policy,
+              start,
+            ).km.toFixed(1)}{" "}
+            km milestone → {effectiveKm.toFixed(1)} km scheduled. Mileage target
+            excludes Hyrox and race warm-up/cool-down.{" "}
             {calendarMileage(calendar, preview.easyPace).totalKm.toFixed(1)} km
             total running, including{" "}
             {calendarMileage(calendar, preview.easyPace).raceExtrasKm.toFixed(
@@ -447,13 +454,15 @@ function TrainingWeekEditor({
           <p className="inline-notice small-text">
             {start < data.monday
               ? "Past week · browsing keeps its saved steps and history intact."
-              : "Future milestone forecast · the 25, 27, 29, 23… sequence is shown with race and break rules applied. Final approval reviews recovery, actual running and supporting sessions; browsing does not activate extra distance."}{" "}
+              : "Ongoing forecast · the initial 25, 27, 29, 23… build continues into consolidation and repeating training/cutback blocks. Race and break rules apply. Final approval reviews recovery, actual running and supporting sessions; browsing does not activate extra distance."}{" "}
             Browsing does not save or activate a week.
           </p>
         )}
         <p className="muted small-text">
-          Stage {week} ceiling: {volumeMilestones[week - 1]} km · baseline:{" "}
-          {preview ? planKm(preview).toFixed(1) : "—"} km
+          {trainingCycle(week, preview?.policy ?? data.policy, start).label} ·
+          weekly budget:{" "}
+          {trainingCycle(week, preview?.policy ?? data.policy, start).km} km ·
+          baseline: {preview ? planKm(preview).toFixed(1) : "—"} km
           {Math.abs(effectiveKm - (preview ? planKm(preview) : 0)) > 0.01
             ? ` · calendar after adjustments: ${effectiveKm.toFixed(1)} km`
             : ""}
@@ -463,22 +472,20 @@ function TrainingWeekEditor({
           <div className="training-form editor-fields">
             <label htmlFor="milestone">
               Milestone stage
-              <select
+              <input
                 id="milestone"
+                type="number"
+                min="1"
+                step="1"
                 value={week}
                 onChange={(e) => {
                   const n = Number(e.target.value);
+                  if (!Number.isSafeInteger(n) || n < 1) return;
                   setWeek(n);
-                  setTargetKm(String(volumeMilestones[n - 1]));
+                  setTargetKm(String(trainingCycle(n, data.policy, start).km));
                   setSelectedDay(0);
                 }}
-              >
-                {volumeMilestones.map((km, i) => (
-                  <option key={i} value={i + 1}>
-                    Stage {i + 1} · ≈{km} km{i % 4 === 3 ? " · cutback" : ""}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <label htmlFor="reviewed-volume">
               Reviewed running volume · km
@@ -487,7 +494,11 @@ function TrainingWeekEditor({
                 type="number"
                 required
                 min={20}
-                max={volumeMilestones[week - 1]}
+                max={
+                  Number.isSafeInteger(week) && week > 0
+                    ? trainingCycle(week, data.policy, start).km
+                    : 90
+                }
                 step="0.1"
                 value={targetKm}
                 onChange={(e) => setTargetKm(e.target.value)}
@@ -530,7 +541,7 @@ function TrainingWeekEditor({
                 setTargetKm(
                   String(
                     Math.min(
-                      volumeMilestones[week - 1],
+                      trainingCycle(week, data.policy, start).km,
                       reviewForView.selected.plan.targetKm,
                     ),
                   ),

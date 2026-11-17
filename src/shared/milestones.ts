@@ -1,7 +1,12 @@
+import { trainingCycle, type PlanningPolicy } from "./training-cycle";
 import type { TrainingPlan, RunWorkout } from "./types/metrics";
-import { volumeMilestones, workoutKm } from "./training-plan";
+import { workoutKm } from "./training-plan";
 import { DEFAULT_TARGETS } from "./types/athlete";
-export function milestoneForWeek(start: string, plans: TrainingPlan[]) {
+export function milestoneForWeek(
+  start: string,
+  plans: TrainingPlan[],
+  policy?: PlanningPolicy,
+) {
   const previous = plans
     .filter((p) => p.start <= start)
     .sort((a, b) => a.start.localeCompare(b.start));
@@ -10,20 +15,17 @@ export function milestoneForWeek(start: string, plans: TrainingPlan[]) {
   const stage = anchor
     ? Math.max(
         1,
-        Math.min(
-          30,
-          anchor.weekNumber +
-            Math.round(
-              (Date.parse(start + "T12:00:00Z") -
-                Date.parse(anchor.start + "T12:00:00Z")) /
-                (7 * 86400000),
-            ),
-        ),
+        anchor.weekNumber +
+          Math.round(
+            (Date.parse(start + "T12:00:00Z") -
+              Date.parse(anchor.start + "T12:00:00Z")) /
+              (7 * 86400000),
+          ),
       )
     : 1;
   return {
     stage,
-    km: volumeMilestones[stage - 1],
+    km: trainingCycle(stage, policy, start).km,
     anchor: anchor?.start ?? start,
   };
 }

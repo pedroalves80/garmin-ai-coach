@@ -1,3 +1,4 @@
+import { trainingCycle, type PlanningPolicy } from "./training-cycle";
 import { TEMPO_LEVELS, tempoLevelForVolume } from "./tempo-progression";
 import { TRAIL_GUIDANCE, trailSummary } from "./trail-running";
 import { DEFAULT_TARGETS, type PlanDevelopment } from "./types/athlete";
@@ -8,10 +9,7 @@ import type {
   PlanTarget,
 } from "./types/metrics";
 
-export const volumeMilestones = [
-  25, 27, 29, 23, 30, 32, 34, 27, 36, 39, 42, 36, 45, 48, 52, 44, 55, 58, 62,
-  52, 64, 68, 72, 60, 70, 74, 78, 66, 76, 80,
-];
+export { volumeMilestones } from "./training-cycle";
 export const defaultEasyPace = 375;
 export const defaultTempoPace = 270;
 export const minimumRunKm = 5;
@@ -134,11 +132,11 @@ export function createTrainingPlan(
   tempoPace = defaultTempoPace,
   targetKm?: number,
   development?: PlanDevelopment,
+  policy?: PlanningPolicy,
 ): TrainingPlan {
   if (
-    !Number.isInteger(weekNumber) ||
+    !Number.isSafeInteger(weekNumber) ||
     weekNumber < 1 ||
-    weekNumber > 30 ||
     !Number.isFinite(easyPace) ||
     !Number.isFinite(tempoPace) ||
     easyPace < 240 ||
@@ -147,22 +145,19 @@ export function createTrainingPlan(
     tempoPace > 420
   )
     throw new Error("Invalid plan settings");
-  const volume = targetKm ?? volumeMilestones[weekNumber - 1];
-  if (
-    !Number.isFinite(volume) ||
-    volume < 20 ||
-    volume > volumeMilestones[weekNumber - 1]
-  )
+  const cycle = trainingCycle(weekNumber, policy, start);
+  const volume = targetKm ?? cycle.km;
+  if (!Number.isFinite(volume) || volume < 20 || volume > cycle.km)
     throw new Error(
       "Reviewed volume must be between 20 km and the selected milestone",
     );
   if (Math.abs(volume * 100 - Math.round(volume * 100)) > 1e-6)
     throw new Error("Use weekly volume in increments of 0.01 km");
   const cutback =
-    weekNumber % 4 === 0 ||
+    cycle.cutback ||
     (development
       ? ["cutback", "recovery"].includes(development.phase)
-      : volume < volumeMilestones[weekNumber - 1] * 0.9);
+      : volume < cycle.km * 0.9);
   const allocation =
     volume < 40
       ? [
@@ -335,6 +330,15 @@ export function createTrainingPlan(
           development: {
             ...development,
             qualityLevel: cutback ? development.qualityLevel : qualityLevel,
+          },
+        }
+      : {}),
+    ...(weekNumber > 30
+      ? {
+          policy: policy ?? {
+            ceilingKm: 80 as const,
+            effectiveFrom: null,
+            reviewedAt: null,
           },
         }
       : {}),

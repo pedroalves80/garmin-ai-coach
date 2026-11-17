@@ -73,10 +73,11 @@ export function AthleteProfileForm({
       >
         <p className="muted small-text">
           Focus: durable aerobic running, faster pace at comparable HR and
-          sustainable volume. The 80 km milestone remains a ceiling. Provisional
-          targets are preferences; confirming a review records your evidence,
-          not a lab validation by the app. Review targets periodically rather
-          than lowering HR targets every week.
+          sustainable volume. The default running ceiling is 80 km, with higher
+          ceilings available only through a separate long-term review.
+          Provisional targets are preferences; confirming a review records your
+          evidence, not a lab validation by the app. Review targets periodically
+          rather than lowering HR targets every week.
         </p>
         <div className="training-form editor-fields">
           {[

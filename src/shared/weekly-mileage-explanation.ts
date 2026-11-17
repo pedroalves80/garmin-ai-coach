@@ -1,7 +1,8 @@
+import { trainingCycle } from "./training-cycle";
 import type { TrainingPlan } from "./types/metrics";
 import type { WeekSchedule } from "./types/schedule";
 import { calendarMileage, workoutMileageKm } from "./mileage";
-import { volumeMilestones, workoutKm } from "./training-plan";
+import { workoutKm } from "./training-plan";
 export function weeklyMileageExplanation(
   plan: TrainingPlan,
   calendar: WeekSchedule,
@@ -47,7 +48,7 @@ export function weeklyMileageExplanation(
         ];
   });
   return {
-    milestoneKm: volumeMilestones[plan.weekNumber - 1],
+    milestoneKm: trainingCycle(plan.weekNumber, plan.policy, plan.start).km,
     baselineKm: plan.targetKm,
     scheduledKm,
     shortfallKm: Math.max(0, plan.targetKm - scheduledKm),

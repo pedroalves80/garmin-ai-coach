@@ -1,3 +1,4 @@
+import { trainingCycle, type PlanningPolicy } from "./training-cycle";
 import type { PlanStep, RunWorkout } from "./types/metrics";
 // Existing level meanings are preserved for approved historical plans.
 export const TEMPO_LEVELS = [
@@ -56,9 +57,21 @@ export function forecastTempoLevel(
   anchorStage: number,
   anchorLevel: number,
   stage: number,
+  policy?: PlanningPolicy,
+  start?: string,
 ) {
   let opportunities = 0;
+  const dayFor = (s: number) =>
+    start
+      ? new Date(Date.parse(start + "T12:00:00Z") - (stage - s) * 7 * 86400000)
+          .toISOString()
+          .slice(0, 10)
+      : undefined;
   for (let s = anchorStage + 1; s <= stage; s++)
-    if (s % 4 !== 0 && s % 4 !== 1) opportunities++;
+    if (
+      !trainingCycle(s, policy, dayFor(s)).cutback &&
+      !trainingCycle(Math.max(1, s - 1), policy, dayFor(s - 1)).cutback
+    )
+      opportunities++;
   return Math.min(6, anchorLevel + Math.floor(opportunities / 2));
 }

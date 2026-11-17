@@ -1,3 +1,8 @@
+import { LongTermPlanning } from "@/components/organisms/LongTermPlanning";
+import {
+  planningPolicyReview,
+  planningPolicy,
+} from "@/server/training/planning-policy";
 import { FitnessEvidencePanel } from "@/components/organisms/FitnessEvidencePanel";
 import { fitnessEvidence } from "@/server/training/fitness-evidence";
 import { Suspense } from "react";
@@ -68,6 +73,12 @@ async function Content({ view }: { view: View }) {
         />
         <TrainingPreferencesForm
           initial={new ScheduleRepository(getDatabase()).preferences()}
+        />
+        <LongTermPlanning
+          initial={planningPolicyReview(
+            getDatabase(),
+            planningPolicy(getDatabase()).ceilingKm,
+          )}
         />
         <FitnessEvidencePanel
           evidence={fitnessEvidence(getDatabase())}

@@ -15,8 +15,8 @@ export const checkInSchema = z
 
 export const planSettingsSchema = z
   .object({
-    weekNumber: z.number().int().min(1).max(30),
-    targetKm: z.number().min(20).max(80).multipleOf(0.01).optional(),
+    weekNumber: z.number().int().min(1),
+    targetKm: z.number().min(20).max(90).multipleOf(0.01).optional(),
     start: z.iso
       .date()
       .refine(
@@ -69,7 +69,14 @@ const stepSchema: z.ZodType<PlanStep> = z.lazy(() =>
 export const savedPlanSchema: z.ZodType<TrainingPlan> =
   planSettingsSchema.extend({
     planningVersion: z.literal(2).optional(),
-    targetKm: z.number().min(20).max(80),
+    policy: z
+      .object({
+        ceilingKm: z.union([z.literal(80), z.literal(85), z.literal(90)]),
+        effectiveFrom: z.iso.date().nullable(),
+        reviewedAt: z.iso.datetime().nullable(),
+      })
+      .optional(),
+    targetKm: z.number().min(20).max(90),
     cutback: z.boolean(),
     development: z
       .object({
