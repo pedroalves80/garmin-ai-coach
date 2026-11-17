@@ -85,7 +85,7 @@ export function TrainingWorkspace({ data }: { data: TrainingDashboardData }) {
   );
   return (
     <TrainingWeekEditor
-      key={requestedDay ?? "current"}
+      key={requestedDay ?? `current:${data.today}`}
       data={data}
       requestedDay={requestedDay}
     />

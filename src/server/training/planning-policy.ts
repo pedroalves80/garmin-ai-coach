@@ -86,7 +86,7 @@ export function planningPolicyReview(
     };
   });
   const baseline = current.ceilingKm;
-  const established = weeks.filter((w) => {
+  const establishedWeeks = weeks.filter((w) => {
     const p = plans.find((p) => p.start === w.start);
     return (
       p &&
@@ -97,7 +97,8 @@ export function planningPolicyReview(
       w.km >= p.targetKm * 0.9 &&
       w.km <= p.targetKm * 1.15
     );
-  }).length;
+  });
+  const established = establishedWeeks.length;
   const lastSync = new GarminRepository(db).status()?.lastCompletedAt;
   const health = db
     .prepare(
@@ -128,7 +129,10 @@ export function planningPolicyReview(
       reasons.push(
         "Complete the build to 80 km and the six-week consolidation phase before reviewing a higher ceiling.",
       );
-    if (established < 4 || !weeks.some((w) => w.km >= baseline - 0.5))
+    if (
+      established < 4 ||
+      !establishedWeeks.some((w) => w.km >= baseline - 0.5)
+    )
       reasons.push(
         `Establish at least four of the last six completed weeks near ${baseline} km, including a week at that ceiling. Current qualifying weeks: ${established}/4.`,
       );

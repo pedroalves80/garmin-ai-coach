@@ -1,3 +1,4 @@
+import { calendarDate } from "@/server/training/dates";
 import { connection, NextResponse } from "next/server";
 import { getGarminConfig } from "@/server/config";
 import { getDatabase } from "@/server/db/client";
@@ -11,6 +12,7 @@ export async function GET() {
   const state = repository.status();
   return NextResponse.json(
     {
+      day: calendarDate(new Date()),
       configured: Boolean(config.GARMIN_PERSONAL_API_KEY),
       running: repository.isRunning(),
       lastSync: state?.lastCompletedAt ?? null,

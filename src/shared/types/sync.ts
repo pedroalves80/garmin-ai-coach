@@ -6,6 +6,7 @@ export type AutoSyncStatus = {
   lastError: string | null;
 };
 export type GarminStatus = {
+  day?: string;
   configured: boolean;
   running: boolean;
   lastSync: string | null;

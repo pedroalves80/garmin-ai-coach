@@ -15,7 +15,8 @@ const Context = createContext<{
 } | null>(null);
 export function GarminStatusProvider({ children }: { children: ReactNode }) {
   const router = useRouter(),
-    seenSync = useRef<string | null | undefined>(undefined);
+    seenSync = useRef<string | null | undefined>(undefined),
+    seenDay = useRef<string | undefined>(undefined);
   const [status, setStatus] = useState<GarminStatus | null>(null),
     [statusError, setStatusError] = useState(false);
   useEffect(() => {
@@ -33,7 +34,12 @@ export function GarminStatusProvider({ children }: { children: ReactNode }) {
         const next: GarminStatus = await response.json();
         setStatus(next);
         setStatusError(false);
-        if (next.lastSync !== seenSync.current) router.refresh();
+        if (
+          next.lastSync !== seenSync.current ||
+          (next.day !== undefined && next.day !== seenDay.current)
+        )
+          router.refresh();
+        seenDay.current = next.day;
         seenSync.current = next.lastSync;
       } catch {
         if (!controller.signal.aborted) setStatusError(true);
@@ -44,12 +50,14 @@ export function GarminStatusProvider({ children }: { children: ReactNode }) {
     const timer = setInterval(() => void load(), 30_000);
     document.addEventListener("visibilitychange", load);
     window.addEventListener("garmin-synced", load);
+    window.addEventListener("focus", load);
     void load();
     return () => {
       clearInterval(timer);
       controller.abort();
       document.removeEventListener("visibilitychange", load);
       window.removeEventListener("garmin-synced", load);
+      window.removeEventListener("focus", load);
     };
   }, [router]);
   return (

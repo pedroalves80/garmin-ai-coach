@@ -464,3 +464,26 @@ test("an explicitly reviewed higher ceiling reaches the real weekly planner beyo
     f.d.close();
   }
 });
+
+test("a large unreviewed week cannot substitute for an established week at the existing ceiling", () => {
+  const f = ready();
+  try {
+    const p = f.repo.plans().find((p) => p.weekNumber === 35)!;
+    f.d
+      .prepare(
+        "UPDATE activities SET distance_meters=distance_meters*.975 WHERE started_at>=? AND started_at<?",
+      )
+      .run(p.start, shiftDay(p.start, 7));
+    addRun(f.d, shiftDay(dateFor(33), 2), 100);
+    const review = planningPolicyReview(f.d, 90, f.now);
+    assert.equal(review.establishedWeeks, 4);
+    assert(!review.eligible);
+    assert(
+      review.reasons.some((r) =>
+        r.includes("including a week at that ceiling"),
+      ),
+    );
+  } finally {
+    f.d.close();
+  }
+});
