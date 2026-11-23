@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { authorizeMutation } from "@/server/security/authorize";
 import { getDatabase } from "@/server/db/client";
-import {
-  saveWorkoutReview,
-  WorkoutReviewError,
-} from "@/server/training/workout-reviews";
+import { WorkoutReviewError } from "@/server/training/workout-reviews";
+import { updateWorkoutReview } from "@/server/training/update-workout-review";
 export async function POST(request: Request) {
   const denied = authorizeMutation(request);
   if (denied) return denied;
@@ -16,7 +14,7 @@ export async function POST(request: Request) {
         { error: "Request too large." },
         { status: 413 },
       );
-    saveWorkoutReview(getDatabase(), JSON.parse(body));
+    updateWorkoutReview(getDatabase(), JSON.parse(body));
     return NextResponse.json(
       { saved: true },
       { headers: { "Cache-Control": "no-store" } },

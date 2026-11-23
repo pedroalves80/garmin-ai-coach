@@ -1,3 +1,4 @@
+import { updateWorkoutReview } from "../src/server/training/update-workout-review";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -654,6 +655,53 @@ test("a run finishing after midnight needs a later night of recovery data", () =
       .run();
     assert.equal(f.assess().automaticRecovery?.lastRunDay, "2026-11-27");
     assert.equal(f.assess().automaticRecovery?.status, "recovery");
+  } finally {
+    f.db.close();
+  }
+});
+
+test("saving optional workout feedback atomically captures changed upcoming automatic targets", () => {
+  const f = fixture();
+  try {
+    captureUpcomingWorkouts(f.db, now);
+    const latest = () =>
+      prescriptionSnapshots(f.db)
+        .filter((s) => s.day === "2026-11-28")
+        .at(-1)!;
+    assert.deepEqual(mainMax(latest().workout!), [148]);
+    const before = f.db
+      .prepare("SELECT count(*) n FROM workout_prescriptions")
+      .get() as { n: number };
+    updateWorkoutReview(
+      f.db,
+      { action: "feedback", activityId: "thu", feeling: "harder" },
+      new Date("2026-11-27T08:15:00Z"),
+    );
+    assert.deepEqual(mainMax(latest().workout!), [140]);
+    assert.equal(latest().source, "change");
+    assert.equal(
+      (
+        f.db.prepare("SELECT count(*) n FROM workout_prescriptions").get() as {
+          n: number;
+        }
+      ).n,
+      before.n + 1,
+    );
+    updateWorkoutReview(
+      f.db,
+      { action: "feedback", activityId: "thu", feeling: "right" },
+      new Date("2026-11-27T08:30:00Z"),
+    );
+    assert.deepEqual(mainMax(latest().workout!), [148]);
+    const count = prescriptionSnapshots(f.db).length;
+    assert.throws(() =>
+      updateWorkoutReview(
+        f.db,
+        { action: "feedback", activityId: "missing", feeling: "right" },
+        now,
+      ),
+    );
+    assert.equal(prescriptionSnapshots(f.db).length, count);
   } finally {
     f.db.close();
   }
