@@ -21,7 +21,7 @@ Use a 64-bit OS for an ARM64 Raspberry Pi. The Dockerfile includes the native bu
 
 [compose.pi.yml](compose.pi.yml) defines the independent `garmin-ai-coach` project, with scoped web/worker services, persistent bind-mounted data, resource limits and hardened runtime settings.
 
-The template assumes an existing `proxy_network` and Traefik configuration. Review its router hostname, TLS settings, network and LAN binding for your environment. Use a trusted LAN/VPN: the app has no sign-in.
+The template assumes an existing `proxy_network` and Traefik configuration. Review its router hostname, TLS settings, network and LAN binding for your environment. The example binds to loopback and uses the sample hostname `coach.home.arpa`; set your intended LAN/VPN address and private hostname explicitly. Use a trusted LAN/VPN: the app has no sign-in.
 
 Expected files inside the homelab directory:
 

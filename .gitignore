@@ -44,3 +44,21 @@ next-env.d.ts
 # Local application data
 data/*
 !data/.gitkeep
+
+# Private exports, SQLite sidecars and local Git backups
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.fit
+*.tcx
+*.gpx
+*.bundle
+*.key
+id_rsa
+id_ed25519
