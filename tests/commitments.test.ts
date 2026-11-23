@@ -194,7 +194,7 @@ test("ordinary event slots cannot bypass Sunday or lunch rules", () => {
     /Sunday/,
   );
 });
-test("17 km trail events reserve more recovery and do not add supporting sessions", () => {
+test("17 km trail forecasts reserve initial rest and only optional recovery cycling", () => {
   const r = race({
       distanceKm: 17,
       terrain: "trail",
@@ -211,8 +211,10 @@ test("17 km trail events reserve more recovery and do not add supporting session
     after.days.every((d) =>
       d.sessions.every(
         (s) =>
-          s.session.sport === "running" &&
-          s.session.workout.type === "recovery",
+          (s.session.sport === "running" &&
+            s.session.workout.type === "recovery") ||
+          (s.session.sport === "cycling" &&
+            s.session.workout.effort === "recovery"),
       ),
     ),
   );
@@ -751,6 +753,7 @@ test("race recovery concerns and major events still justify reductions, and miss
   try {
     const date = new Date("2026-11-05T12:00:00Z");
     assert.deepEqual(raceRecoveryEvidence(db, date), {
+      cyclingAllowed: true,
       stopRunning: false,
       reasons: [],
     });

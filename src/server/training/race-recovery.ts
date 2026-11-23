@@ -17,7 +17,22 @@ export function raceRecoveryEvidence(db: Database.Database, now: Date) {
     "SELECT day,resting_heart_rate AS restingHeartRate,sleep_seconds AS sleepSeconds FROM daily_health WHERE day>=? AND day<=? ORDER BY day",
   ).all(shiftDay(today, -28), today) as HealthEvidenceRow[];
   const recovery = garminRecovery(rows, today);
+  const sync = prepare(
+    db,
+    "SELECT last_completed_at FROM sync_state WHERE provider='garmin'",
+  ).get() as { last_completed_at: string | null } | undefined;
+  const syncAge = now.getTime() - Date.parse(sync?.last_completed_at ?? "");
+  // Optional activity, not clearance: a recent sync and no known concerns are
+  // required. Reports remain optional; unknown symptoms must be checked before riding.
+  const cyclingAllowed =
+    Number.isFinite(syncAge) &&
+    syncAge >= 0 &&
+    syncAge <= 2 * 86400000 &&
+    !pain &&
+    !reports.some((c) => c.fatigue >= 3 || c.soreness >= 3) &&
+    recovery.status !== "caution";
   return {
+    cyclingAllowed,
     stopRunning: pain || fatigue,
     reasons: [
       ...(pain

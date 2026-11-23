@@ -19,7 +19,12 @@ import type {
   WeekSchedule,
   SessionState,
 } from "./types/schedule";
-import { dayOffsetDate, validateDaySessions } from "./weekly-schedule";
+import {
+  cyclingWorkout,
+  dayOffsetDate,
+  validateDaySessions,
+} from "./weekly-schedule";
+import { DEFAULT_PREFERENCES } from "./types/schedule";
 import { workoutKm } from "./training-plan";
 export function pauseEnd(p: TrainingPause) {
   const resumed = p.resumeOn ? dayOffsetDate(p.resumeOn, -1) : null;
@@ -228,7 +233,11 @@ export function applyCommitments(
     approvedRestDays?: string[];
     longestRecentKm?: number;
     allowMileageAllocation?: boolean;
-    raceRecovery?: { stopRunning: boolean; reasons: string[] };
+    raceRecovery?: {
+      stopRunning: boolean;
+      reasons: string[];
+      cyclingAllowed?: boolean;
+    };
   },
 ): WeekSchedule {
   const races = c.races.filter((r) => r.status !== "cancelled"),
@@ -295,6 +304,16 @@ export function applyCommitments(
       .map((r) => r.day),
   ]);
   const activeRaces = schedule.active;
+  // Recorded rides count towards the optional two-ride limit and spacing.
+  // They are never shortened, relabelled or removed by this projection.
+  const recoveryRideDays = result.days.flatMap((d) =>
+    activeRaces.some((r) => {
+      const elapsed = daysBetween(d.day, r.day);
+      return elapsed > 0 && elapsed <= raceWindow(r).recovery;
+    })
+      ? d.recorded.filter((r) => r.sport === "cycling").map(() => d.day)
+      : [],
+  );
   // Precedence: break/return hold, fixed race, reduced return/recovery, then ordinary training.
   for (const day of result.days) {
     const pause = c.pauses.find((p) => pauseActive(p, day.day)),
@@ -505,6 +524,10 @@ export function applyCommitments(
           daysBetween(day.day, r.day) <= raceWindow(r).recovery,
       );
     if (after) {
+      const selectedRide = day.sessions.find(
+        (entry) =>
+          entry.status === "planned" && entry.session.sport === "cycling",
+      );
       day.rule = {
         phase: "race_recovery",
         provisional: !after.recorded || day.day > options.today,
@@ -515,7 +538,7 @@ export function applyCommitments(
           !after.recorded
             ? "Provisional recovery forecast from entered event details. Reassessed after a matching Garmin recording; daily check-ins are optional."
             : `Recovery reassessed from ${after.recorded.minutes.toFixed(0)} recorded minutes and ${after.recorded.km.toFixed(1)} km, entered terrain/ascent and available recovery signals. Missing reports are unknown, not clearance.`,
-          `After ${after.day}: remove supporting sessions and running intensity first. Retain prescribed distances after ${raceWindow(after).fullRest} initial rest day(s); the ${raceWindow(after).recovery}-day window restricts intensity, not every run to 5 km. Recovery remains provisional, not a clearance.`,
+          `After ${after.day}: withhold Hyrox throughout recovery and remove running intensity. Selected cycling may return only as optional recovery rides after initial rest. Retain prescribed distances after ${raceWindow(after).fullRest} initial rest day(s); the ${raceWindow(after).recovery}-day window restricts intensity, not every run to 5 km. Recovery remains provisional, not a clearance.`,
         ],
       };
       if (daysBetween(day.day, after.day) <= raceWindow(after).fullRest)
@@ -530,7 +553,7 @@ export function applyCommitments(
       } else if (reviewedBaseReturn(after, day.day)) {
         reduce(day, "Post-race return · reviewed base effort", true, "base");
         day.rule.notes.push(
-          "One-time return-to-base review saved. Base running only; quality and secondary training stay reduced until the original recovery window ends.",
+          "One-time return-to-base review saved. Base running only; quality and Hyrox stay withheld until the original recovery window ends. Optional cycling still follows the recovery-ride limits.",
         );
       } else if (
         after.distanceKm >= 42 ||
@@ -546,6 +569,72 @@ export function applyCommitments(
           "Post-race recovery · distance retained",
           !returning && !baselineReturn,
         );
+      const elapsed = daysBetween(day.day, after.day);
+      const nearbyRestriction = activeRaces.some((r) => {
+        const since = daysBetween(day.day, r.day);
+        const window = raceWindow(r);
+        return (
+          (since > 0 && since <= window.fullRest) ||
+          (since > 0 &&
+            since <= window.recovery &&
+            (r.distanceKm >= 42 ||
+              (r.recorded?.minutes ?? r.expectedMinutes) >= 240)) ||
+          (since < 0 &&
+            -since <= Math.min(window.lead, r.terrain === "trail" ? 7 : 3))
+        );
+      });
+      if (
+        selectedRide?.session.sport === "cycling" &&
+        day.day >= options.today &&
+        day.dayOffset !== 6 &&
+        elapsed > raceWindow(after).fullRest &&
+        !returning &&
+        !baselineReturn &&
+        !options.approvedRestDays?.includes(day.day) &&
+        !nearbyRestriction &&
+        // Future events may show conditional previews. An elapsed event needs
+        // a matching recording and current recovery inputs, not assumed completion.
+        (after.day >= options.today ||
+          (!!after.recorded &&
+            options.raceRecovery?.cyclingAllowed === true)) &&
+        !(after.day <= options.today && options.raceRecovery?.reasons.length) &&
+        recoveryRideDays.length < 2 &&
+        recoveryRideDays.every((d) => Math.abs(daysBetween(day.day, d)) > 1) &&
+        !day.recorded.some((r) => r.sport !== "running") &&
+        day.recorded.length +
+          day.sessions.filter((s) => s.status === "planned").length <
+          2 &&
+        !day.sessions.some((s) => s.session.slot === selectedRide.session.slot)
+      ) {
+        day.sessions.push({
+          ...selectedRide,
+          session: {
+            ...selectedRide.session,
+            workout: {
+              ...cyclingWorkout(
+                {
+                  ...DEFAULT_PREFERENCES,
+                  ftpWatts: selectedRide.session.workout.ftpWatts,
+                },
+                "recovery",
+                60,
+              ),
+              title: "Optional recovery cycling",
+            },
+          },
+        });
+        recoveryRideDays.push(day.day);
+        day.rule.notes.push(
+          "Optional selected ride: 60 minutes including warm-up/cool-down, main set 45–55% of your current FTP; at most two non-consecutive rides in this recovery week. Ride only if soreness is improving, walking is normal and there is no pain or unusual fatigue. Stop if symptoms worsen; skip rather than extend it for calories. Future rides are provisional and rechecked with current Garmin/recovery data. Hyrox remains withheld.",
+        );
+        validateDaySessions(
+          day.dayOffset,
+          day.sessions
+            .filter((s) => s.status !== "blocked")
+            .map((s) => s.session),
+          plan.easyPace,
+        );
+      }
     }
     const before = activeRaces.find(
       (r) =>
