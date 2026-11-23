@@ -1,71 +1,112 @@
-# Raspberry Pi homelab deployment
+# Docker and Raspberry Pi deployment
 
-This app is an independent Compose project alongside the existing `docker-home` stack. Do not merge or overwrite the main Compose file, its `.env`, proxy, DNS, authentication, setup, or backup configuration. Starting or stopping this project never requires restarting shared services.
+[Project overview](../README.md) · [Architecture](../docs/architecture.md)
 
-## Files on the Pi
+The repository provides a standalone Compose setup and a separate homelab template. Use the latter when this app shares a Raspberry Pi with other services.
 
-Under `/home/pi-user/docker-home`:
+## Standalone installation
 
-- `docker-compose.coach.yml` — copy of `deploy/compose.pi.yml`.
-- `configs/garmin-ai-coach/coach.env` — server credentials, mode 0600, excluded by that directory's `.gitignore`.
-- `configs/garmin-ai-coach/coach.env.example` — placeholders only.
-- `data/garmin-ai-coach/coach.db` — persistent SQLite, UID/GID 1001, directory 0700.
-- `data/garmin-ai-coach-deploy-state/baseline.json` — pre-deployment container IDs, restart counts, start times, and shared configuration hashes. No credentials are captured.
-- `setup-garmin-coach.sh` — provisions only the coach directories. Do not run the homelab's full setup script.
-- `backup-garmin-coach.sh` — online SQLite backup to `/mnt/backups/garmin-ai-coach`; keeps 14 verified snapshots and copies this app's private environment/deployment file. Does not stop containers.
+From the project root, create `.env` from [.env.example](../.env.example), add the required Garmin key and optional OpenAI key, then run:
 
-The web and worker run as UID 1001 with read-only roots, dropped capabilities, no privilege escalation, bounded logs, CPU and memory limits. The web is limited to 512 MiB / 0.75 CPU; the worker to 512 MiB / 0.25 CPU. Only the web joins `proxy_network`; the worker has its own outbound network and no published port.
+```bash
+docker compose up -d --build
+docker compose ps
+```
 
-## Access
+The web service listens on port 3000. The `garmin-worker` service has no published port. Both share the `coach-data` named volume at `/app/data`; retain it during upgrades.
 
-- Immediate private LAN access: `http://192.168.1.10:3100`. The port binds only to that LAN address.
-- Existing Traefik HTTPS route: `https://coach.home.arpa`, once that name resolves to `192.168.1.10` on clients. This deployment does not modify DNS or shared Traefik configuration. Use the homelab's existing trusted wildcard certificate.
-- `APP_ALLOWED_ORIGINS` explicitly includes both addresses. There is no added sign-in, matching this app's trusted-private-network design.
+Use a 64-bit OS for an ARM64 Raspberry Pi. The Dockerfile includes the native build tools needed by SQLite bindings and runs the resulting application as UID/GID 1001.
 
-## Exact service commands
+## Existing homelab stack
 
-From `docker-home`, always select this file/project explicitly:
+[compose.pi.yml](compose.pi.yml) defines the independent `garmin-ai-coach` project, with scoped web/worker services, persistent bind-mounted data, resource limits and hardened runtime settings.
+
+The template assumes an existing `proxy_network` and Traefik configuration. Review its router hostname, TLS settings, network and LAN binding for your environment. Use a trusted LAN/VPN: the app has no sign-in.
+
+Expected files inside the homelab directory:
+
+```text
+homelab/
+  docker-compose.coach.yml
+  setup-garmin-coach.sh
+  backup-garmin-coach.sh
+  configs/garmin-ai-coach/
+    coach.env.example
+    coach.env
+  data/garmin-ai-coach/
+    coach.db
+  data/garmin-ai-coach-deploy-state/
+```
+
+For a first installation, copy the Compose template, [environment example](coach.env.example) and app-specific setup/backup scripts into this layout. Run `setup-garmin-coach.sh` from that homelab directory. It provisions only the app directories and preserves an existing private environment file.
+
+Edit `configs/garmin-ai-coach/coach.env` before starting:
+
+| Setting                  | Purpose                                       |
+| ------------------------ | --------------------------------------------- |
+| `GARMIN_COACH_IMAGE`     | Worker image and default web image.           |
+| `GARMIN_COACH_WEB_IMAGE` | Optional independent web image override.      |
+| `GARMIN_COACH_BIND_IP`   | The host's intended LAN/VPN address.          |
+| `APP_ALLOWED_ORIGINS`    | Custom private origins used to reach the app. |
+| `DATABASE_PATH`          | `/app/data/coach.db` inside both containers.  |
+
+Add the provider keys described in the [main configuration table](../README.md#configuration). Keep the private environment mode at `0600` and the data directory writable by UID/GID 1001. Do not replace an existing homelab's main Compose file, `.env`, proxy, authentication or DNS configuration.
+
+### Scoped service commands
+
+Run these from the homelab directory, not the app checkout:
 
 ```bash
 docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml config --quiet
 docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml up -d --no-deps coach garmin-worker
 docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml ps
-docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml logs --tail 30 coach garmin-worker
+docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml logs --tail 50 coach garmin-worker
 ```
 
-Never run the homelab's unqualified `up`, `down`, `pull`, cleanup/prune, setup, or backup scripts as part of this app deployment. Existing local and Pi copies have independent edits.
+Avoid unqualified stack-wide `up`, `down`, setup or cleanup commands on a shared host. For an existing installation, preserve local configuration rather than copying a fresh template over it.
 
-## Build away from the live Pi
+## Build an ARM64 image
 
-Use the dedicated Colima profile `garmin-coach-build`: ARM64 Linux, 2 CPUs, 4 GiB RAM, no personal-folder mounts or port forwarding. It does not replace or activate the existing Docker context. Stop this profile after building. Build the exact committed source, excluding `.env`, databases, macOS modules and local output.
-
-The production Dockerfile installs Python/make/g++ only in the dependency stage because `better-sqlite3` compiles a native addon. Existing dependency versions stay pinned. The builder runs types, all tests and the production build; the final image contains only the standalone runtime, assets and worker. Pin `NODE_IMAGE` to the verified digest and tag/label the image with the Git revision.
+Build on a separate ARM64 machine or a builder that supports `linux/arm64`, rather than using a busy live Pi:
 
 ```bash
-colima start garmin-coach-build --arch aarch64 --cpus 2 --memory 4 --disk 20 --activate=false --ssh-config=false --mount none --port-forwarder none
-docker --context colima-garmin-coach-build build --platform linux/arm64 --build-arg APP_REVISION=<revision> -t garmin-ai-coach:<revision>-arm64 .
+COACH_REVISION=$(git rev-parse --short HEAD)
+docker build --platform linux/arm64 \
+  --build-arg APP_REVISION="$COACH_REVISION" \
+  -t "garmin-ai-coach:$COACH_REVISION-arm64" .
+docker save "garmin-ai-coach:$COACH_REVISION-arm64" | gzip > "garmin-ai-coach-$COACH_REVISION-arm64.tar.gz"
 ```
 
-Export the finished image, copy it over SSH and load it on the Pi. This avoids compiling on the live server. Verify ARM64 architecture, image revision and target container health before enabling provider jobs. Never use macOS standalone output.
+For reproducible releases, also supply an immutable Node 22 image digest through the Dockerfile's `NODE_IMAGE` build argument. The image build runs types, tests and production/worker builds. `.env`, local databases and Git metadata are excluded from its context.
 
-An initial capped build on the system SD card caused storage latency. It was stopped; all 31 original containers retained their IDs/start times/restart counts. Moving files to the backup drive relieved that pressure; final compilation happens off-Pi. Do not repeat a full dependency installation/build on the live server's SD card.
+Transfer the archive to the target and load it with `docker load -i <archive>`. Update only the coach image settings in the private environment, validate Compose, and use the scoped service command above.
 
-## Data migration and cutover
+For UI-only releases, the independent web override can update only `coach`. Shared planning, data or worker changes generally require both services to use the compatible release.
 
-Keep the Mac app available while building. At cutover, stop its supervisor/worker, take an online SQLite backup with `better-sqlite3`, and transfer it over SSH. Preserve a second pre-deployment snapshot. Install it as UID 1001, mode 0600; do not copy a live main database file without its WAL.
+## Backups
 
-Transfer only the app's server configuration over SSH with protected permissions. First smoke-test the Pi with automatic sync disabled and no OpenAI key; then restore the intended environment and recreate **only these two coach services**. Keep the local worker stopped afterwards to avoid two independent copies generating recommendations or syncing. The Mac database remains a rollback snapshot, not a second live source of truth.
+SQLite uses live database files that may have WAL sidecars. Use SQLite's online backup API; do not copy only the main live file.
 
-Verify the running web, assets, all screens, origin checks, native SQLite, worker heartbeat, successful Garmin sync, one configured AI model/key (without making a paid smoke-test request), and data counts/targets/check-ins. Make an online backup, verify it independently in a network-disabled container, then restart only the coach services to verify persistence.
-
-A separate `/etc/cron.d/garmin-ai-coach-backup` runs the app-only backup daily at 02:40 in the Pi's local timezone. It does not edit the existing backup job. The backup drive must be mounted; failure leaves prior snapshots intact. The backup contains private health data and credentials, so preserve its 0700 directory / 0600 credential permissions.
-
-## Rollback
-
-Stop only these services (data is retained):
+For the homelab layout, [backup-garmin-coach.sh](backup-garmin-coach.sh) expects a mounted `/mnt/backups`. It creates an online snapshot, normalizes its journal mode, checks integrity, retains 14 snapshots and copies only this app's deployment/private environment files. It does not stop any service.
 
 ```bash
-docker compose --env-file configs/garmin-ai-coach/coach.env -p garmin-ai-coach -f docker-compose.coach.yml stop coach garmin-worker
+./backup-garmin-coach.sh
 ```
 
-For an upgrade rollback, change `GARMIN_COACH_IMAGE` to the retained previous immutable image and run the scoped `up` command. If schema restoration is needed, stop both coach services first, restore the matching verified SQLite snapshot and permissions, and start only those services. Do not restore the old Mac snapshot over newer Pi data or run both workers. Removing this project's containers/network does not require removing `proxy_network`, host data, or touching any other stack.
+Keep backups and their private environment file protected. Configure recurring execution in the host's existing scheduler if desired. For standalone Compose, use the same online-backup approach against its named volume; the supplied homelab script assumes the homelab container names and paths.
+
+## Upgrade and rollback
+
+Before upgrading, record the current image settings and take a verified online backup. Keep the previous image available. On a shared host, capture service identities and configuration fingerprints so unrelated services can be checked afterward.
+
+After the scoped update, verify web/worker health, Garmin status, a saved week's steps, persisted history and unaffected neighboring services. Database initialization/migrations run on first use; rehearse unfamiliar changes on a disposable backup first.
+
+For image-only rollback, restore the two coach image settings and recreate only the scoped services. Retain the current database. An older image must understand the newer stored plan/schema format; use a compatible release or forward fix otherwise. Never overwrite newer athlete data with a stale backup just to undo a code release.
+
+## Operations
+
+- `GET /api/garmin/status` reports sync state and worker availability. A healthy worker lease is separate from successful Garmin connectivity.
+- Scheduled sync normally runs on startup and every three hours, with persisted cooldowns and bounded retries.
+- `GARMIN_AUTO_SYNC=false` disables scheduled Garmin calls; manual sync remains available.
+- Local production mode uses `npm run build && npm start`; Docker runs the web app and worker separately.
+- After changing provider keys or environment settings, restart the affected app services.
