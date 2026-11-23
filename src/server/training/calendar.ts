@@ -1,4 +1,8 @@
-import { observeRaces } from "./race-observations";
+import { workoutReviews } from "./workout-reviews";
+import {
+  assessRaceRecoveries,
+  automaticRecoveryProtectedDays,
+} from "./automatic-race-recovery";
 import { countedActivityKm } from "../../shared/mileage";
 import { raceRecoveryEvidence } from "./race-recovery";
 import {
@@ -125,13 +129,17 @@ export function trainingCalendar(
   const committed = applyCommitments(
     rawCalendar,
     plan,
-    observeRaces(commitments.all(), activities, now),
+    assessRaceRecoveries(db, commitments.all(), activities, now),
     new AthleteRepository(db).profile().targets,
     {
       today: calendarDate(now),
       allowMileageAllocation: plan.planningVersion === 2,
       returnReady: returnReady(db, now),
       raceRecovery: raceRecoveryEvidence(db, now),
+      protectedAutomaticRecoveryDays: [
+        ...automaticRecoveryProtectedDays(db, calendarDate(now)),
+        ...previewChanges.map((c) => c.day),
+      ],
       approvedRestDays: commitments.restDays(),
       longestRecentKm: Math.max(
         0,
@@ -151,14 +159,42 @@ export function trainingCalendar(
     committed,
     availabilityOverride ?? schedule.availability(),
   );
+  // Keep the automatically changed prescription known at activity start visible
+  // after it becomes history. Never backdate a later capture or guess a match.
+  const recordedAutomatic = available.days.some((d) =>
+    d.sessions.some(
+      (s) => s.status === "recorded" && s.session.sport === "running",
+    ),
+  )
+    ? workoutReviews(db, now).reviews.filter(
+        (r) =>
+          r.versionKnown &&
+          ["automatic", "manual"].includes(r.match) &&
+          r.snapshot?.workout?.title ===
+            "Post-race return · automatically reassessed base",
+      )
+    : [];
   return {
     ...available,
     days: available.days.map((day) => ({
       ...day,
-      sessions: day.sessions.map((entry) => ({
-        ...entry,
-        session: withSessionIdentity(entry.session, day.day),
-      })),
+      sessions: day.sessions.map((entry) => {
+        const identity = withSessionIdentity(entry.session, day.day);
+        const historical =
+          entry.status === "recorded" && identity.sport === "running"
+            ? recordedAutomatic.find(
+                (r) =>
+                  r.snapshot?.sessionKey === identity.id && r.day === day.day,
+              )
+            : null;
+        return {
+          ...entry,
+          session:
+            historical?.snapshot?.workout && identity.sport === "running"
+              ? { ...identity, workout: historical.snapshot.workout }
+              : identity,
+        };
+      }),
     })),
   };
 }

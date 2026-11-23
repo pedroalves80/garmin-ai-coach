@@ -1,4 +1,5 @@
 "use client";
+import { AutomaticRecoveryNotice } from "./AutomaticRecoveryNotice";
 import { useState } from "react";
 import {
   activeRaceSchedule,
@@ -6,6 +7,7 @@ import {
   raceRevision,
   raceWindow,
   reviewedBaseReturn,
+  automaticBaseReturn,
 } from "@/shared/race-policy";
 import type { RaceEvent } from "@/shared/types/commitments";
 import { Button } from "../atoms/Button";
@@ -46,10 +48,12 @@ export function RaceReviewControls({
     elapsed <= window.recovery &&
     race.distanceKm < 42 &&
     race.recorded.minutes < 240 &&
-    !reviewedBaseReturn(race, today);
+    !reviewedBaseReturn(race, today) &&
+    !automaticBaseReturn(race, today, today);
   const waitingForRecording =
     elapsed > 0 && elapsed <= window.recovery && !race.recorded;
   if (
+    !race.automaticRecovery &&
     !waitingForRecording &&
     !participation &&
     !returnReview &&
@@ -62,11 +66,13 @@ export function RaceReviewControls({
       className="inline-notice small-text"
       aria-label={`Review ${race.name}`}
     >
+      <AutomaticRecoveryNotice race={race} />
       {waitingForRecording && (
         <p>
           <strong>Provisional recovery forecast.</strong> Sync a matching Garmin
-          recording to reassess duration and open the one-time return-to-base
-          review after initial rest. Daily check-ins are optional.
+          recording to reassess duration. After initial rest, completed recovery
+          runs and fresh overnight data can support an automatic return to base.
+          Daily check-ins are optional.
         </p>
       )}
       {participation && (
@@ -96,14 +102,14 @@ export function RaceReviewControls({
       )}
       {returnReview && (
         <>
-          <strong>Review return to base running</strong>
+          <strong>Optional manual return-to-base review</strong>
           <p>
             Matched Garmin recording: {race.recorded!.km.toFixed(1)} km ·{" "}
             {race.recorded!.minutes.toFixed(0)} min. Entered terrain/ascent and
             current recovery signals also inform the forecast. A one-time review
-            can restore base effort from today; tempo, strides and supporting
-            sessions stay reduced through the original recovery window. Daily
-            check-ins are optional.
+            can restore base effort from today if the automatic assessment still
+            lacks evidence. Tempo, strides and Hyrox stay withheld; optional
+            cycling retains its recovery limits. Daily check-ins are optional.
           </p>
         </>
       )}

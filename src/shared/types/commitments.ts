@@ -1,3 +1,15 @@
+export type AutomaticRaceRecovery = {
+  status: "recovery" | "base";
+  checkedOn: string;
+  from: string;
+  revision: string;
+  recordingRevision: string | null;
+  recoveryRuns: number;
+  lastRunDay: string | null;
+  healthDay: string | null;
+  paceComparison: "unavailable" | "no_concern" | "caution";
+  reasons: string[];
+};
 export type RaceEvent = {
   id: string;
   name: string;
@@ -24,6 +36,8 @@ export type RaceEvent = {
     activityId: string;
     recordingRevision: string;
   };
+  // Derived on read from current evidence. Never stored as an athlete review.
+  automaticRecovery?: AutomaticRaceRecovery;
   recorded?: { activityId: string; km: number; minutes: number };
 };
 export type TrainingPause = {
@@ -51,4 +65,5 @@ export type CalendarRule = {
   notes: string[];
   provisional?: boolean;
   recoveryEffort?: "recovery" | "base";
+  recoverySource?: "automatic" | "manual";
 };

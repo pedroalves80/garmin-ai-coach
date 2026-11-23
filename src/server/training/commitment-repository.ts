@@ -90,7 +90,9 @@ export class CommitmentRepository {
     };
   }
   saveRace(race: RaceEvent) {
-    const parsed = raceSchema.parse(race);
+    const inputs = { ...race };
+    delete inputs.automaticRecovery;
+    const parsed = raceSchema.parse(inputs);
     // Observations are derived from Garmin on read, never stored as race inputs.
     delete parsed.recorded;
     prepare(

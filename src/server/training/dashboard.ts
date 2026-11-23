@@ -2,7 +2,10 @@ import { planningPolicy } from "./planning-policy";
 import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviews } from "./workout-reviews";
 import { fitnessEvidence } from "./fitness-evidence";
-import { observeRaces } from "./race-observations";
+import {
+  assessRaceRecoveries,
+  automaticRecoveryProtectedDays,
+} from "./automatic-race-recovery";
 import {
   countedActivityKm,
   raceExtraMeters,
@@ -80,7 +83,12 @@ export function trainingDashboardData(
   const today = calendarDate(now),
     monday = mondayOf(today);
   const commitmentsRepo = new CommitmentRepository(sqlite),
-    commitments = observeRaces(commitmentsRepo.all(), activities, now);
+    commitments = assessRaceRecoveries(
+      sqlite,
+      commitmentsRepo.all(),
+      activities,
+      now,
+    );
   const currentPlan = plans.find((p) => p.start === monday) ?? null;
   const hasCommitments =
     commitments.races.some(
@@ -199,6 +207,10 @@ export function trainingDashboardData(
       today,
       returnReady: returnReady(sqlite, now),
       raceRecovery: raceRecoveryEvidence(sqlite, now),
+      protectedAutomaticRecoveryDays: automaticRecoveryProtectedDays(
+        sqlite,
+        today,
+      ),
       approvedRestDays: commitmentsRepo.restDays(),
       longestRecentKm: Math.max(
         0,

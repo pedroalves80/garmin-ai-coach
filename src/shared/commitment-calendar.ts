@@ -4,6 +4,7 @@ import {
   daysBetween,
   raceWindow,
   reviewedBaseReturn,
+  automaticBaseReturn,
 } from "./race-policy";
 export { daysBetween, raceWindow } from "./race-policy";
 import { workoutMileageKm } from "./mileage";
@@ -231,6 +232,7 @@ export function applyCommitments(
     today: string;
     returnReady: boolean;
     approvedRestDays?: string[];
+    protectedAutomaticRecoveryDays?: string[];
     longestRecentKm?: number;
     allowMileageAllocation?: boolean;
     raceRecovery?: {
@@ -524,6 +526,14 @@ export function applyCommitments(
           daysBetween(day.day, r.day) <= raceWindow(r).recovery,
       );
     if (after) {
+      const automatic =
+        automaticBaseReturn(after, day.day, options.today) &&
+        !options.protectedAutomaticRecoveryDays?.includes(day.day);
+      const baseReturn =
+        !returning &&
+        !baselineReturn &&
+        !(after.day <= options.today && options.raceRecovery?.reasons.length) &&
+        (reviewedBaseReturn(after, day.day) || automatic);
       const selectedRide = day.sessions.find(
         (entry) =>
           entry.status === "planned" && entry.session.sport === "cycling",
@@ -531,9 +541,14 @@ export function applyCommitments(
       day.rule = {
         phase: "race_recovery",
         provisional: !after.recorded || day.day > options.today,
-        recoveryEffort: reviewedBaseReturn(after, day.day)
-          ? "base"
-          : "recovery",
+        recoveryEffort: baseReturn ? "base" : "recovery",
+        ...(baseReturn
+          ? {
+              recoverySource: automatic
+                ? ("automatic" as const)
+                : ("manual" as const),
+            }
+          : {}),
         notes: [
           !after.recorded
             ? "Provisional recovery forecast from entered event details. Reassessed after a matching Garmin recording; daily check-ins are optional."
@@ -541,6 +556,14 @@ export function applyCommitments(
           `After ${after.day}: withhold Hyrox throughout recovery and remove running intensity. Selected cycling may return only as optional recovery rides after initial rest. Retain prescribed distances after ${raceWindow(after).fullRest} initial rest day(s); the ${raceWindow(after).recovery}-day window restricts intensity, not every run to 5 km. Recovery remains provisional, not a clearance.`,
         ],
       };
+      if (after.automaticRecovery && day.day >= options.today)
+        day.rule.notes.push(
+          baseReturn && automatic
+            ? `Automatic recovery reassessment: ${after.automaticRecovery.recoveryRuns} completed recovery-run days and supportive Garmin overnight data restore the existing base range only. No extra distance or quality; new concerns can reverse this decision.`
+            : baseReturn
+              ? "The saved manual return-to-base review applies; the separate automatic assessment does not replace that athlete decision."
+              : `Automatic recovery reassessment keeps recovery effort${options.protectedAutomaticRecoveryDays?.includes(day.day) ? ": an explicit day adjustment is preserved" : `; ${Math.min(2, after.automaticRecovery.recoveryRuns)}/2 qualifying recovery-run days`}. See the race recovery assessment for the evidence.`,
+        );
       if (daysBetween(day.day, after.day) <= raceWindow(after).fullRest)
         day.sessions = keepHistory(day);
       else if (
@@ -550,10 +573,19 @@ export function applyCommitments(
         day.rule.notes.push(...options.raceRecovery.reasons);
         if (options.raceRecovery.stopRunning) day.sessions = keepHistory(day);
         else reduce(day, "Post-race recovery · reduced for recovery evidence");
-      } else if (reviewedBaseReturn(after, day.day)) {
-        reduce(day, "Post-race return · reviewed base effort", true, "base");
+      } else if (baseReturn) {
+        reduce(
+          day,
+          automatic
+            ? "Post-race return · automatically reassessed base"
+            : "Post-race return · reviewed base effort",
+          true,
+          "base",
+        );
         day.rule.notes.push(
-          "One-time return-to-base review saved. Base running only; quality and Hyrox stay withheld until the original recovery window ends. Optional cycling still follows the recovery-ride limits.",
+          automatic
+            ? "Garmin-based automatic reassessment restores only existing base effort for upcoming runs. Quality and Hyrox remain withheld, and optional cycling retains its recovery limits. Run averages do not prove full muscular recovery; report pain or unusual fatigue whenever needed."
+            : "One-time return-to-base review saved. Base running only; quality and Hyrox stay withheld until the original recovery window ends. Optional cycling still follows the recovery-ride limits.",
         );
       } else if (
         after.distanceKm >= 42 ||

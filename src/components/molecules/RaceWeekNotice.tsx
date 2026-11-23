@@ -1,3 +1,4 @@
+import { AutomaticRecoveryNotice } from "./AutomaticRecoveryNotice";
 import Link from "next/link";
 import { activeRaceSchedule, raceWindow } from "@/shared/race-policy";
 import { dayOffsetDate } from "@/shared/weekly-schedule";
@@ -65,10 +66,16 @@ export function RaceWeekNotice({
           <strong>Provisional recovery forecast.</strong> The app reassesses
           after a matching Garmin recording, using recorded duration/distance,
           entered terrain/ascent and available recovery signals. Missing daily
-          check-ins do not lock the forecast. A one-time return-to-base review
-          is available in Events after initial rest.
+          check-ins do not lock the forecast. Completed recovery runs and fresh
+          Garmin overnight data can automatically restore your existing base
+          range; future days remain provisional.
         </p>
       )}
+      {affected
+        .filter((r) => r.automaticRecovery)
+        .map((r) => (
+          <AutomaticRecoveryNotice key={r.id} race={r} />
+        ))}
       <details>
         <summary>Why these kilometres and targets?</summary>
         {affected.map((r) => (

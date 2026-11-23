@@ -2,6 +2,7 @@ import {
   captureExistingPrescriptions,
   captureUpcomingWorkouts,
 } from "../training/review-capture";
+import { calendarDate } from "../training/dates";
 import { WeeklyPlanner, weeklyOpenAIAdapter } from "../coach/weekly";
 import Database from "better-sqlite3";
 import { getConfig } from "../config";
@@ -52,6 +53,7 @@ async function main() {
       configured: !!config.GARMIN_PERSONAL_API_KEY,
     },
   );
+  let lastCaptureDay = calendarDate(new Date());
   let pending: Promise<void> | null = null,
     stopping = false;
   const tick = () => {
@@ -66,6 +68,11 @@ async function main() {
             "Automatic Garmin sync failed; the next attempt is scheduled. See the Garmin panel.",
           );
         if (!stopping) {
+          const day = calendarDate(new Date());
+          if (day !== lastCaptureDay) {
+            captureUpcomingWorkouts(db);
+            lastCaptureDay = day;
+          }
           const weeklyResult = await weekly.tick().catch(() => "failed");
           if (weeklyResult === "reviewed")
             console.info("Weekly training proposal ready for approval.");

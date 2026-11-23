@@ -4,7 +4,10 @@ import { tempoEvidence } from "./tempo-evidence";
 import { workoutReviewSummary } from "./workout-reviews";
 import { fitnessEvidenceSummary } from "./fitness-evidence";
 import { aerobicDistanceSteps } from "../../shared/running-steps";
-import { observeRaces } from "./race-observations";
+import {
+  assessRaceRecoveries,
+  automaticRecoveryProtectedDays,
+} from "./automatic-race-recovery";
 import { fitMileageWeek } from "../../shared/fit-mileage-week";
 import { calendarMileage, countedActivityKm } from "../../shared/mileage";
 import { milestoneForWeek, distributeMileage } from "../../shared/milestones";
@@ -119,7 +122,12 @@ export function weeklyPlanning(
   const health = healthEvidence(db, today),
     recovery = garminRecovery(health, today),
     commitmentsRepo = new CommitmentRepository(db),
-    commitments = observeRaces(commitmentsRepo.all(), activities, now),
+    commitments = assessRaceRecoveries(
+      db,
+      commitmentsRepo.all(),
+      activities,
+      now,
+    ),
     preferences = schedule.preferences();
   const allSettings = schedule.weeks(),
     inheritedStart = Object.keys(allSettings)
@@ -349,6 +357,10 @@ export function weeklyPlanning(
             today,
             returnReady: returnReady(db, now),
             raceRecovery: raceRecoveryEvidence(db, now),
+            protectedAutomaticRecoveryDays: automaticRecoveryProtectedDays(
+              db,
+              today,
+            ),
             approvedRestDays: commitmentsRepo.restDays(),
             longestRecentKm: longest,
           },

@@ -75,3 +75,23 @@ export function reviewedBaseReturn(r: RaceEvent, day: string) {
     daysBetween(day, r.day) > raceWindow(r).fullRest
   );
 }
+
+// Automatic decisions expire with the local date and are derived afresh. They
+// never backdate a change to a completed day or override initial/major-event rest.
+export function automaticBaseReturn(r: RaceEvent, day: string, today: string) {
+  const assessment = r.automaticRecovery;
+  return !!(
+    r.recorded &&
+    r.status !== "cancelled" &&
+    r.distanceKm < 42 &&
+    r.recorded.minutes < 240 &&
+    assessment?.status === "base" &&
+    assessment.checkedOn === today &&
+    assessment.from >= today &&
+    day >= assessment.from &&
+    assessment.revision === raceRevision(r) &&
+    assessment.recordingRevision === JSON.stringify(r.recorded) &&
+    daysBetween(day, r.day) > raceWindow(r).fullRest &&
+    daysBetween(day, r.day) <= raceWindow(r).recovery
+  );
+}

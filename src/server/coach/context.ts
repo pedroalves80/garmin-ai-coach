@@ -2,7 +2,7 @@ import { planningPolicy } from "../training/planning-policy";
 import { trainingCycle } from "../../shared/training-cycle";
 import { workoutReviewSummary } from "../training/workout-reviews";
 import { fitnessEvidenceSummary } from "../training/fitness-evidence";
-import { observeRaces } from "../training/race-observations";
+import { assessRaceRecoveries } from "../training/automatic-race-recovery";
 import { racePacingData } from "../training/race-pacing";
 import { racePacingContext } from "../../shared/race-pacing";
 import { prepare } from "../db/statements";
@@ -54,6 +54,18 @@ function raceSummary(r: import("../../shared/types/commitments").RaceEvent) {
         }
       : {}),
     ...(r.recoveryReview ? { baseReviewFrom: r.recoveryReview.from } : {}),
+    ...(r.automaticRecovery
+      ? {
+          automaticRecovery: {
+            status: r.automaticRecovery.status,
+            checkedOn: r.automaticRecovery.checkedOn,
+            qualifyingRunDays: r.automaticRecovery.recoveryRuns,
+            healthDay: r.automaticRecovery.healthDay,
+            paceComparison: r.automaticRecovery.paceComparison,
+            reason: r.automaticRecovery.reasons[0],
+          },
+        }
+      : {}),
   };
 }
 export function coachContext(sqlite: Database.Database, now: Date) {
@@ -69,7 +81,8 @@ export function coachContext(sqlite: Database.Database, now: Date) {
   const checkIns = training
     .checkIns()
     .filter((c) => c.day <= day && c.day >= shiftDay(day, -6));
-  const commitments = observeRaces(
+  const commitments = assessRaceRecoveries(
+    sqlite,
     new CommitmentRepository(sqlite).all(),
     activities,
     now,
